@@ -1,0 +1,38 @@
+/* 悬浮窗基础样式 - 磨砂玻璃 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 圆角窗口 + 磨砂 */
+body {
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
