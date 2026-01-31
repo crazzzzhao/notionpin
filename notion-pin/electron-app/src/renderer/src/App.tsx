@@ -1,9 +1,61 @@
-import { useEffect, useState, useCallback, useTransition } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useEffect, useState, useCallback, useTransition, useRef } from 'react'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, ChevronUp, Minus, X, Settings } from 'lucide-react'
-import { SettingsModal } from '@/components/SettingsModal'
+import { ChevronDown, ChevronUp, RotateCw, X, CircleCheck, CircleX } from 'lucide-react'
 import { TaskList } from '@/components/TaskList'
+import { BillingPopover } from '@/components/BillingPopover'
+import { SettingsModal } from '@/components/SettingsModal'
+import type { BillingPlan } from '../../preload'
+
+// 刷新 Toast - 设计稿 9kFMa (Success) / RnTAS (Error) 100% 复刻
+// padding 12 16, gap 12, cornerRadius 8, bg #fff, border #e5e5e5
+// shadow: blur 12, color #0000000d, offset y:4, spread -1
+// icon: circle-check 18x18 #16a34a | circle-x 18x18 #d44c47
+// text: Inter 12px normal #737373
+
+interface RefreshToastProps {
+  type: 'success' | 'error'
+  message: string
+  onDismiss: () => void
+}
+
+function RefreshToast({ type, message, onDismiss }: RefreshToastProps): React.JSX.Element {
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, 3000)
+    return () => clearTimeout(timer)
+  }, [onDismiss])
+
+  const isSuccess = type === 'success'
+  return (
+    <div
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center animate-in slide-in-from-bottom-2"
+      style={{
+        padding: '12px 16px',
+        gap: 12,
+        borderRadius: 8,
+        background: '#ffffff',
+        border: '1px solid #e5e5e5',
+        boxShadow: '0 4px 12px -1px rgba(0,0,0,0.05)'
+      }}
+    >
+      {isSuccess ? (
+        <CircleCheck style={{ width: 18, height: 18, color: '#16a34a', flexShrink: 0 }} />
+      ) : (
+        <CircleX style={{ width: 18, height: 18, color: '#d44c47', flexShrink: 0 }} />
+      )}
+      <span
+        style={{
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 12,
+          fontWeight: 400,
+          color: '#737373'
+        }}
+      >
+        {message}
+      </span>
+    </div>
+  )
+}
 
 // 创建 QueryClient
 const queryClient = new QueryClient({
@@ -21,18 +73,39 @@ interface SettingsState {
   databaseId: string | null
   databaseUrl: string | null
   dataSourceId: string | null
+  fieldMapping: import('../../preload').FieldMapping | null
 }
 
 function AppContent(): React.JSX.Element {
+  const queryClient = useQueryClient()
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [queryControls, setQueryControls] = useState<{
+    refetch: () => Promise<unknown>
+    isFetching: boolean
+  } | null>(null)
+  const handleQueryReady = useCallback(
+    (controls: { refetch: () => Promise<unknown>; isFetching: boolean } | null) => {
+      setQueryControls(controls)
+    },
+    []
+  )
+  const [refreshToast, setRefreshToast] = useState<{ type: 'success' | 'error'; message: string } | null>(
+    null
+  )
   const [isLoading, setIsLoading] = useState(true)
-  const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<SettingsState>({
     isTokenConfigured: false,
     databaseId: null,
     databaseUrl: null,
-    dataSourceId: null
+    dataSourceId: null,
+    fieldMapping: null
   })
+  // Billing state
+  const [canEdit, setCanEdit] = useState(false)
+  const [billingPlan, setBillingPlan] = useState<BillingPlan>('free')
+
+  // Settings Dialog state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 加载设置
   const loadSettings = useCallback(async () => {
@@ -43,55 +116,118 @@ function AppContent(): React.JSX.Element {
     queryClient.invalidateQueries({ queryKey: ['notion'] })
   }, [])
 
-  // 初始化：获取窗口状态和设置
-  useEffect(() => {
-    Promise.all([window.windowAPI.getWindowState(), window.settingsAPI.load()]).then(
-      ([windowState, settingsData]) => {
-        setIsCollapsed(windowState.isCollapsed)
-        setSettings(settingsData)
-        setIsLoading(false)
-      }
-    )
+  // 加载 Billing 状态
+  const loadBilling = useCallback(async () => {
+    try {
+      const entitlement = await window.billingAPI.getEntitlement()
+      setBillingPlan(entitlement.plan)
+      const canEditResult = await window.billingAPI.canEdit()
+      setCanEdit(canEditResult)
+    } catch (error) {
+      console.error('Failed to load billing:', error)
+      setCanEdit(false)
+      setBillingPlan('free')
+    }
   }, [])
+
+  // 初始化：获取窗口状态、设置和 Billing 状态
+  useEffect(() => {
+    Promise.all([
+      window.windowAPI.getWindowState(),
+      window.settingsAPI.load(),
+      window.billingAPI.getEntitlement(),
+      window.billingAPI.canEdit()
+    ]).then(([windowState, settingsData, entitlement, canEditResult]) => {
+      setIsCollapsed(windowState.isCollapsed)
+      setSettings(settingsData)
+      setBillingPlan(entitlement.plan)
+      setCanEdit(canEditResult)
+      setIsLoading(false)
+    })
+  }, [])
+
+  // Settings 独立窗口关闭后刷新主窗口
+  useEffect(() => {
+    const unsub = window.windowAPI.onSettingsWindowClosed(() => {
+      loadSettings()
+      loadBilling()
+    })
+    return unsub
+  }, [loadSettings, loadBilling])
 
   // 切换收起/展开 - 丝滑动画
   const [isPending, startTransition] = useTransition()
+  const [collapsing, setCollapsing] = useState(false)
+  const transitionEndHandled = useRef(false)
 
   const handleToggle = useCallback((): void => {
     if (isCollapsed) {
       // 展开：先调 API，窗口变大后内容淡入
       window.windowAPI.toggleCollapsed().then((newCollapsed) => {
-        startTransition(() => setIsCollapsed(newCollapsed))
+        // 使用 requestAnimationFrame 确保 DOM 更新后再触发动画
+        requestAnimationFrame(() => {
+          startTransition(() => setIsCollapsed(newCollapsed))
+        })
       })
     } else {
       // 收起：先动画再调 API（由 CSS 动画驱动，onTransitionEnd 触发）
+      transitionEndHandled.current = false
       setCollapsing(true)
     }
   }, [isCollapsed])
 
-  const [collapsing, setCollapsing] = useState(false)
-
-  // 收起动画结束后调 API（仅 main 自身 transition 结束时触发）
+  // 收起动画结束后调 API（仅 opacity transition 结束时触发一次）
   const handleCollapseTransitionEnd = useCallback(
     (e: React.TransitionEvent) => {
-      if (e.target !== e.currentTarget || !collapsing) return
-      setCollapsing(false)
-      window.windowAPI.toggleCollapsed().then((newCollapsed) => {
-        setIsCollapsed(newCollapsed)
+      // 只响应 opacity 结束事件，避免多次触发
+      if (e.target !== e.currentTarget || !collapsing || e.propertyName !== 'opacity') return
+      if (transitionEndHandled.current) return
+      transitionEndHandled.current = true
+      
+      // 使用 requestAnimationFrame 确保平滑过渡
+      requestAnimationFrame(() => {
+        setCollapsing(false)
+        window.windowAPI.toggleCollapsed().then((newCollapsed) => {
+          setIsCollapsed(newCollapsed)
+        })
       })
     },
     [collapsing]
   )
 
-  // 最小化
-  const handleMinimize = (): void => {
-    window.windowAPI.minimize()
-  }
-
   // 关闭
   const handleClose = (): void => {
     window.windowAPI.close()
   }
+
+  // 刷新任务列表
+  const handleRefresh = useCallback(async () => {
+    if (!queryControls?.refetch) return
+    try {
+      await queryControls.refetch()
+      setRefreshToast({ type: 'success', message: 'Tasks refreshed successfully' })
+    } catch (err) {
+      const msg = err && typeof err === 'object' && 'userMessage' in err
+        ? String((err as { userMessage: string }).userMessage)
+        : 'Failed to refresh tasks'
+      setRefreshToast({ type: 'error', message: msg })
+    }
+  }, [queryControls])
+
+  // 打开 Settings Dialog（不再使用独立窗口）
+  const handleOpenSettings = useCallback(() => {
+    setIsSettingsOpen(true)
+  }, [])
+
+  // 关闭 Settings Dialog
+  const handleCloseSettings = useCallback(() => {
+    setIsSettingsOpen(false)
+  }, [])
+
+  // Settings 保存后刷新
+  const handleSettingsSaved = useCallback(() => {
+    loadSettings()
+  }, [loadSettings])
 
   if (isLoading) {
     return <div className="h-full glass-panel" />
@@ -100,83 +236,117 @@ function AppContent(): React.JSX.Element {
   const showMain = !isCollapsed || collapsing
 
   return (
-    <div className="relative flex flex-col h-screen text-foreground overflow-hidden glass-panel">
-      {/* 顶栏 - 磨砂玻璃 */}
+    <div className="relative flex flex-col h-screen w-full min-w-0 text-foreground overflow-hidden glass-panel">
+      {/* Header - 设计稿 .title-bar 48px */}
       <header
-        className="flex items-center justify-between h-[52px] px-3 border-b border-border shrink-0 glass-panel"
+        className="flex items-center justify-between h-12 px-4 shrink-0"
         style={{
-          WebkitAppRegion: 'drag',
-          background: 'hsl(var(--card) / 0.8)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)'
+          WebkitAppRegion: 'drag'
         } as React.CSSProperties}
       >
-        {/* 左侧：App 名称 */}
+        {/* 左侧：NotionPin + Plan tag */}
+        {/* 所有 plan tag 均可点击打开 Billing Popover（含 Lifetime，方便降级到 Free） */}
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground text-xs font-bold">P</span>
-          </div>
-          <span className="font-semibold text-sm">Notion Pin</span>
+          <span className="text-base font-semibold text-foreground">NotionPin</span>
+          <BillingPopover
+            trigger={
+              <button
+                type="button"
+                className="flex items-center h-[17px] rounded-[10px] px-2 py-0.5 hover:opacity-80 transition-opacity cursor-pointer"
+                style={{
+                  background:
+                    billingPlan === 'lifetime'
+                      ? 'rgba(34, 197, 94, 0.15)'
+                      : billingPlan === 'free'
+                        ? 'rgba(155, 154, 151, 0.15)'
+                        : 'rgba(0, 122, 255, 0.15)',
+                  color:
+                    billingPlan === 'lifetime'
+                      ? '#16a34a'
+                      : billingPlan === 'free'
+                        ? '#737373'
+                        : '#007AFF',
+                  WebkitAppRegion: 'no-drag'
+                } as React.CSSProperties}
+                title={
+                  billingPlan === 'lifetime'
+                    ? 'Manage subscription'
+                    : billingPlan === 'free'
+                      ? 'Upgrade to Pro'
+                      : 'Manage subscription'
+                }
+              >
+                <span className="text-[11px] font-medium">
+                  {billingPlan === 'lifetime'
+                    ? 'Lifetime access'
+                    : billingPlan === 'free'
+                      ? 'Free plan'
+                      : 'Pro plan'}
+                </span>
+              </button>
+            }
+            onPlanChanged={loadBilling}
+          />
         </div>
 
-        {/* 右侧：控制按钮 */}
+        {/* 右侧：Refresh, Toggle, Close - 设计稿 20x20 */}
         <div
-          className="flex items-center gap-1"
+          className="flex items-center gap-3"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          {/* Settings 按钮 - 仅在展开时显示 */}
-          {!isCollapsed && (
+          {!isCollapsed && settings.isTokenConfigured && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
-              onClick={() => setShowSettings(true)}
-              title="设置"
-              aria-label="打开设置"
+              className="h-5 w-5 rounded"
+              onClick={handleRefresh}
+              disabled={queryControls?.isFetching}
+              title="刷新"
+              aria-label="刷新"
             >
-              <Settings className="h-4 w-4" />
+              <RotateCw
+                className={`h-4 w-4 text-[#737373] ${queryControls?.isFetching ? 'animate-spin' : ''}`}
+              />
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-5 w-5 rounded"
             onClick={handleToggle}
             disabled={isPending || collapsing}
             title={isCollapsed ? '展开' : '收起'}
-            aria-label={isCollapsed ? '展开窗口' : '收起窗口'}
+            aria-label={isCollapsed ? '展开' : '收起'}
           >
-            {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            {isCollapsed ? (
+              <ChevronDown className="h-[18px] w-[18px] text-[#737373]" />
+            ) : (
+              <ChevronUp className="h-[18px] w-[18px] text-[#737373]" />
+            )}
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
-            onClick={handleMinimize}
-            title="最小化"
-            aria-label="最小化"
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 hover:bg-destructive hover:text-destructive-foreground"
+            className="h-5 w-5 rounded hover:bg-destructive/10 hover:text-destructive"
             onClick={handleClose}
             title="关闭"
             aria-label="关闭"
           >
-            <X className="h-4 w-4" />
+            <X className="h-[18px] w-[18px] text-[#737373]" />
           </Button>
         </div>
       </header>
 
-      {/* 内容区 - 展开时显示，收起时平滑动画 */}
+      {/* 内容区 - 展开时显示，收起时丝滑动画 */}
       {showMain && (
         <main
-          className={`flex-1 flex flex-col overflow-hidden transition-smooth glass-panel ${
-            collapsing ? 'opacity-0 -translate-y-2' : 'opacity-100 translate-y-0'
-          }`}
+          className="flex-1 flex flex-col overflow-hidden transition-smooth"
+          style={{
+            opacity: collapsing ? 0 : 1,
+            transform: collapsing 
+              ? 'translateY(-4px) scale(0.98) translateZ(0)' 
+              : 'translateY(0) scale(1) translateZ(0)'
+          }}
           onTransitionEnd={handleCollapseTransitionEnd}
         >
           {/* 未配置提示 */}
@@ -187,7 +357,7 @@ function AppContent(): React.JSX.Element {
                 variant="link"
                 size="sm"
                 className="h-auto p-0 mt-1 text-amber-600"
-                onClick={() => setShowSettings(true)}
+                onClick={handleOpenSettings}
               >
                 打开设置 →
               </Button>
@@ -196,44 +366,34 @@ function AppContent(): React.JSX.Element {
 
           {/* 任务列表 */}
           <div className="flex-1 overflow-hidden">
-            <TaskList isConfigured={settings.isTokenConfigured} />
+            <TaskList
+              isConfigured={settings.isTokenConfigured}
+              fieldMapping={settings.fieldMapping}
+              onOpenSettings={handleOpenSettings}
+              onQueryReady={handleQueryReady}
+              canEdit={canEdit}
+            />
           </div>
 
-          {/* Debug 面板（可折叠） */}
-          <details className="mx-3 mb-3">
-            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-              Debug
-            </summary>
-            <div className="mt-2 p-2 rounded bg-muted/50 font-mono text-xs space-y-1">
-              <p>
-                <span className="text-muted-foreground">isTokenConfigured:</span>{' '}
-                <span className={settings.isTokenConfigured ? 'text-green-600' : 'text-red-500'}>
-                  {String(settings.isTokenConfigured)}
-                </span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">databaseId:</span>{' '}
-                <span className="text-foreground">
-                  {settings.databaseId?.slice(0, 8) || <span className="text-muted-foreground">null</span>}
-                </span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">dataSourceId:</span>{' '}
-                <span className="text-foreground">
-                  {settings.dataSourceId?.slice(0, 8) || <span className="text-muted-foreground">null</span>}
-                </span>
-              </p>
-            </div>
-          </details>
+          {/* 刷新完成 Toast */}
+          {refreshToast && (
+            <RefreshToast
+              type={refreshToast.type}
+              message={refreshToast.message}
+              onDismiss={() => setRefreshToast(null)}
+            />
+          )}
         </main>
       )}
 
-      {/* Settings Modal */}
+      {/* Settings Dialog - 与 Billing Dialog 一致的模糊背景弹窗 */}
       <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onSaved={loadSettings}
-        initialDatabaseUrl={settings.databaseUrl || ''}
+        isOpen={isSettingsOpen}
+        onClose={handleCloseSettings}
+        onSaved={handleSettingsSaved}
+        initialDatabaseUrl={settings.databaseUrl || undefined}
+        initialFieldMapping={settings.fieldMapping}
+        initialDataSourceId={settings.dataSourceId}
       />
     </div>
   )
