@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useTransition, useRef } from 'react'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, ChevronUp, RotateCw, X, CircleCheck, CircleX } from 'lucide-react'
+import { ChevronDown, ChevronUp, RotateCw, X, CircleCheck, CircleX, Unplug } from 'lucide-react'
 import { TaskList } from '@/components/TaskList'
 import { BillingPopover } from '@/components/BillingPopover'
 import { SettingsModal } from '@/components/SettingsModal'
@@ -53,6 +53,43 @@ function RefreshToast({ type, message, onDismiss }: RefreshToastProps): React.JS
       >
         {message}
       </span>
+    </div>
+  )
+}
+
+// 未连接状态组件 - 友好的引导 UI
+interface NotConnectedStateProps {
+  onOpenSettings: () => void
+}
+
+function NotConnectedState({ onOpenSettings }: NotConnectedStateProps): React.JSX.Element {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-16 px-6">
+      <div
+        className="flex items-center justify-center w-14 h-14 rounded-full"
+        style={{ background: 'rgba(115, 115, 115, 0.1)' }}
+      >
+        <Unplug className="w-7 h-7 text-muted-foreground" />
+      </div>
+      <div className="text-center space-y-1.5">
+        <h3 className="text-[15px] font-semibold text-foreground">
+          Notion not connected
+        </h3>
+        <p className="text-[13px] text-muted-foreground">
+          Add your Notion token and database to view tasks.
+        </p>
+      </div>
+      <Button
+        size="sm"
+        className="h-9 px-5 rounded-lg text-[13px] font-medium text-white"
+        style={{
+          background: '#007AFF',
+          boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
+        }}
+        onClick={onOpenSettings}
+      >
+        Open Settings
+      </Button>
     </div>
   )
 }
@@ -229,6 +266,18 @@ function AppContent(): React.JSX.Element {
     loadSettings()
   }, [loadSettings])
 
+  // 断开 Notion 连接后的处理
+  const handleDisconnected = useCallback(async () => {
+    // 1. 清除 Notion API 缓存
+    await window.notionAPI.clearCache()
+    // 2. 清除 React Query 缓存
+    queryClient.clear()
+    // 3. 重新加载设置（会更新 isTokenConfigured 为 false）
+    await loadSettings()
+    // 4. 显示成功 Toast
+    setRefreshToast({ type: 'success', message: 'Notion disconnected' })
+  }, [queryClient, loadSettings])
+
   if (isLoading) {
     return <div className="h-full glass-panel" />
   }
@@ -349,31 +398,23 @@ function AppContent(): React.JSX.Element {
           }}
           onTransitionEnd={handleCollapseTransitionEnd}
         >
-          {/* 未配置提示 */}
-          {!settings.isTokenConfigured && (
-            <div className="p-3 mx-3 mt-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <p className="text-sm text-amber-600">⚠ 请先配置 Notion Token 和 Database</p>
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto p-0 mt-1 text-amber-600"
-                onClick={handleOpenSettings}
-              >
-                打开设置 →
-              </Button>
+          {/* 未连接状态 - 友好的引导 UI */}
+          {!settings.isTokenConfigured ? (
+            <div className="flex-1 overflow-hidden">
+              <NotConnectedState onOpenSettings={handleOpenSettings} />
+            </div>
+          ) : (
+            /* 任务列表 - 已配置时显示 */
+            <div className="flex-1 overflow-hidden">
+              <TaskList
+                isConfigured={settings.isTokenConfigured}
+                fieldMapping={settings.fieldMapping}
+                onOpenSettings={handleOpenSettings}
+                onQueryReady={handleQueryReady}
+                canEdit={canEdit}
+              />
             </div>
           )}
-
-          {/* 任务列表 */}
-          <div className="flex-1 overflow-hidden">
-            <TaskList
-              isConfigured={settings.isTokenConfigured}
-              fieldMapping={settings.fieldMapping}
-              onOpenSettings={handleOpenSettings}
-              onQueryReady={handleQueryReady}
-              canEdit={canEdit}
-            />
-          </div>
 
           {/* 刷新完成 Toast */}
           {refreshToast && (
@@ -391,6 +432,7 @@ function AppContent(): React.JSX.Element {
         isOpen={isSettingsOpen}
         onClose={handleCloseSettings}
         onSaved={handleSettingsSaved}
+        onDisconnected={handleDisconnected}
         initialDatabaseUrl={settings.databaseUrl || undefined}
         initialFieldMapping={settings.fieldMapping}
         initialDataSourceId={settings.dataSourceId}

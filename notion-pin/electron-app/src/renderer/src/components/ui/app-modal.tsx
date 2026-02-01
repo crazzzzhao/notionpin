@@ -64,10 +64,12 @@ export function AppModal({
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* Header - 标题 + 关闭按钮 */}
+        {/* Header - 使用 shadcn muted 背景色 + 底部阴影 */}
         <div
-          className="flex items-center justify-between px-5 py-[18px] border-b shrink-0"
-          style={{ borderColor: 'rgba(255, 255, 255, 0.5)' }}
+          className="flex items-center justify-between px-5 py-[18px] shrink-0 relative z-10 bg-muted/50 border-b border-border"
+          style={{ 
+            boxShadow: '0 1px 4px -1px rgba(0, 0, 0, 0.06)'
+          }}
         >
           <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
           <button

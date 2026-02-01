@@ -33,20 +33,21 @@ export function AnimatedTabs({
   return (
     <div
       className={cn(
-        'relative flex flex-row items-center rounded-xl p-1 text-muted-foreground max-w-full w-full',
+        'relative flex flex-row items-center rounded-lg p-1 text-muted-foreground max-w-full w-full',
         containerClassName
       )}
       style={{ 
-        background: 'rgba(0, 0, 0, 0.04)',
+        background: '#f5f5f5',
         border: 'none'
       }}
     >
       {/* 滑动背景 - 使用 transform 而不是 layoutId 避免跳动 */}
       <motion.div
-        className={cn('absolute top-1 bottom-1 rounded-lg', activeTabClassName)}
+        className={cn('absolute top-1 bottom-1', activeTabClassName)}
         style={{
-          background: 'rgba(255, 255, 255, 0.8)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          background: '#ffffff',
+          boxShadow: '0 1px 1.75px rgba(0,0,0,0.05)',
+          borderRadius: 6,
           width: `calc((100% - 8px) / ${tabs.length})`,
           left: 4
         }}
@@ -61,9 +62,10 @@ export function AnimatedTabs({
           type="button"
           onClick={() => onTabChange(tab.value)}
           className={cn(
-            'relative flex-1 flex items-center justify-center px-3 py-1.5 rounded-md text-[13px] font-medium min-w-0 z-10',
+            'relative flex-1 flex items-center justify-center px-3 py-1.5 text-sm font-medium min-w-0 z-10',
             tabClassName
           )}
+          style={{ borderRadius: 6 }}
           aria-label={tab.title}
           aria-selected={activeValue === tab.value}
         >
