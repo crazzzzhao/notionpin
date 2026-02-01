@@ -14,6 +14,8 @@ export interface WindowAPI {
   onSettingsWindowClosed: (callback: () => void) => () => void
   onSettingsSetTab: (callback: (tab: string) => void) => () => void
   closeCurrentWindow: () => Promise<void>
+  /** 安全打开外部链接（仅允许 notion.so 域名） */
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
 }
 
 /**

@@ -37,7 +37,7 @@ export function AnimatedTabs({
         containerClassName
       )}
       style={{ 
-        background: '#f5f5f5',
+        background: 'rgba(0, 0, 0, 0.04)',
         border: 'none'
       }}
     >
@@ -45,8 +45,8 @@ export function AnimatedTabs({
       <motion.div
         className={cn('absolute top-1 bottom-1', activeTabClassName)}
         style={{
-          background: '#ffffff',
-          boxShadow: '0 1px 1.75px rgba(0,0,0,0.05)',
+          background: 'rgba(255, 255, 255, 0.45)',
+          boxShadow: '0 0.5px 1px rgba(0,0,0,0.03)',
           borderRadius: 6,
           width: `calc((100% - 8px) / ${tabs.length})`,
           left: 4

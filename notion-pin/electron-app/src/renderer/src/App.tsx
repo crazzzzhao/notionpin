@@ -146,12 +146,16 @@ function AppContent(): React.JSX.Element {
 
   // 加载设置
   const loadSettings = useCallback(async () => {
-    const data = await window.settingsAPI.load()
-    setSettings(data)
-    // 设置更改后清除 Notion 缓存和查询缓存
-    await window.notionAPI.clearCache()
-    queryClient.invalidateQueries({ queryKey: ['notion'] })
-  }, [])
+    try {
+      const data = await window.settingsAPI.load()
+      setSettings(data)
+      // 设置更改后清除 Notion 缓存和查询缓存
+      await window.notionAPI.clearCache()
+      queryClient.invalidateQueries({ queryKey: ['notion'] })
+    } catch (err) {
+      console.error('Failed to load settings:', err)
+    }
+  }, [queryClient])
 
   // 加载 Billing 状态
   const loadBilling = useCallback(async () => {
@@ -179,7 +183,11 @@ function AppContent(): React.JSX.Element {
       setSettings(settingsData)
       setBillingPlan(entitlement.plan)
       setCanEdit(canEditResult)
-      setIsLoading(false)
+    }).catch((err) => {
+      console.error('Failed to initialize app:', err)
+      // 降级处理：使用默认值，允许用户继续操作
+    }).finally(() => {
+      setIsLoading(false) // 确保 loading 状态结束
     })
   }, [])
 

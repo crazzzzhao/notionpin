@@ -45,7 +45,11 @@ const windowAPI = {
   },
 
   // 关闭当前窗口（Settings 窗口用）
-  closeCurrentWindow: (): Promise<void> => ipcRenderer.invoke('window:closeCurrent')
+  closeCurrentWindow: (): Promise<void> => ipcRenderer.invoke('window:closeCurrent'),
+
+  // 安全打开外部链接（仅允许 notion.so 域名）
+  openExternal: (url: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('shell:openExternal', url)
 }
 
 // 字段映射类型（供 renderer 导入）

@@ -454,6 +454,33 @@ function setupIPC(): void {
     store.set('windowBounds', mainWindow.getBounds())
   })
 
+  // ========== Shell IPC ==========
+
+  /**
+   * 安全打开外部链接（仅允许 notion.so 域名）
+   */
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    // 验证 URL 是否为 Notion 链接
+    try {
+      const parsedUrl = new URL(url)
+      const isNotionUrl =
+        parsedUrl.hostname === 'notion.so' ||
+        parsedUrl.hostname === 'www.notion.so' ||
+        parsedUrl.hostname.endsWith('.notion.so')
+
+      if (isNotionUrl && parsedUrl.protocol === 'https:') {
+        shell.openExternal(url)
+        return { success: true }
+      } else {
+        console.warn('Blocked non-Notion URL:', url)
+        return { success: false, error: 'Only Notion URLs are allowed' }
+      }
+    } catch (err) {
+      console.error('Invalid URL:', url, err)
+      return { success: false, error: 'Invalid URL' }
+    }
+  })
+
   // ========== Settings IPC ==========
 
   /**

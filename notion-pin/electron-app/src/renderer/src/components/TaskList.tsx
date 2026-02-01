@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
@@ -128,8 +128,16 @@ function TaskItem({
     }
   }, [isEditingTitle])
 
+  // 当 task.title 外部变化时，同步 editTitle（仅在非编辑状态）
+  useEffect(() => {
+    if (!isEditingTitle) {
+      setEditTitle(task.title)
+    }
+  }, [task.title, isEditingTitle])
+
   const handleOpenInNotion = (): void => {
-    window.open(task.url, '_blank')
+    // 使用安全的 preload API 打开外部链接（仅允许 notion.so 域名）
+    window.windowAPI.openExternal(task.url)
   }
 
   // ========== Title 编辑 ==========
@@ -183,6 +191,9 @@ function TaskItem({
   const formatDue = (due: string | null): string => {
     if (!due) return ''
     const date = new Date(due)
+    // 检查是否为有效日期
+    if (isNaN(date.getTime())) return ''
+    
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -560,15 +571,15 @@ export function TaskList({
     retry: false
   })
 
-  // 从 schema 中提取 status 选项（仅 status 类型，不含 select）
-  const statusOptions: StatusOptionWithColor[] = (() => {
+  // 从 schema 中提取 status 选项（仅 status 类型，不含 select）- 使用 useMemo 缓存
+  const statusOptions = useMemo<StatusOptionWithColor[]>(() => {
     const props = schemaData ?? []
     const statusPropId = fieldMapping?.statusPropertyId
     const prop = statusPropId
       ? props.find((p) => p.id === statusPropId && p.type === 'status')
       : props.find((p) => p.type === 'status')
     return toStatusOptionsWithColor(prop?.options)
-  })()
+  }, [schemaData, fieldMapping?.statusPropertyId])
 
   // TanStack Query 查询任务
   const { data, isLoading, isFetching, isError, error, refetch, dataUpdatedAt } = useQuery({
@@ -737,8 +748,10 @@ export function TaskList({
         return next
       })
       setUpdateSuccess(true)
-      // 延迟 invalidate，避免频繁请求，让轮询来同步最终状态
-      // 这里不做额外 invalidate，依赖定时轮询（POLL_INTERVAL）
+      // 延迟 5 秒后静默同步，确保最终一致性（避免乐观更新与服务端不一致）
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['notion', 'tasks'] })
+      }, 5000)
     }
   })
 
@@ -753,7 +766,7 @@ export function TaskList({
   // 手动刷新
   const handleRefresh = (): void => {
     queryClient.invalidateQueries({ queryKey: ['notion', 'tasks'] })
-    refetch()
+    // React Query 会自动 refetch stale 的活跃查询，无需显式调用 refetch()
   }
 
   // 格式化最后同步时间
