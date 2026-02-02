@@ -358,8 +358,8 @@ function AppContent(): React.JSX.Element {
               className="h-5 w-5 rounded"
               onClick={handleRefresh}
               disabled={queryControls?.isFetching}
-              title="刷新"
-              aria-label="刷新"
+              title="Refresh"
+              aria-label="Refresh"
             >
               <RotateCw
                 className={`h-4 w-4 text-[#737373] ${queryControls?.isFetching ? 'animate-spin' : ''}`}
@@ -372,8 +372,8 @@ function AppContent(): React.JSX.Element {
             className="h-5 w-5 rounded"
             onClick={handleToggle}
             disabled={isPending || collapsing}
-            title={isCollapsed ? '展开' : '收起'}
-            aria-label={isCollapsed ? '展开' : '收起'}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
           >
             {isCollapsed ? (
               <ChevronDown className="h-[18px] w-[18px] text-[#737373]" />
@@ -386,8 +386,8 @@ function AppContent(): React.JSX.Element {
             size="icon"
             className="h-5 w-5 rounded hover:bg-destructive/10 hover:text-destructive"
             onClick={handleClose}
-            title="关闭"
-            aria-label="关闭"
+            title="Close"
+            aria-label="Close"
           >
             <X className="h-[18px] w-[18px] text-[#737373]" />
           </Button>

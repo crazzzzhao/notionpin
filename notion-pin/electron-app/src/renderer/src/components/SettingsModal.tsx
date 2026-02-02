@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
-import { X, ChevronDown, AlertCircle, CheckCircle, Eye, EyeOff, Copy, Check, Unlink } from 'lucide-react'
+import { X, ChevronDown, AlertCircle, CheckCircle, Eye, EyeOff, Copy, Check, Unlink, Type, Loader, Calendar } from 'lucide-react'
 import type { FieldMapping, PropertySchema } from '../../../preload'
 
 // ========== Database URL 解析 ==========
@@ -37,9 +37,9 @@ export function parseDatabaseId(input: string): string | null {
 const settingsSchema = z.object({
   token: z
     .string()
-    .min(1, 'Notion Token 不能为空')
-    .regex(/^(secret_|ntn_)/, 'Token 格式不正确，应以 secret_ 或 ntn_ 开头'),
-  databaseUrl: z.string().min(1, 'Database URL 不能为空')
+    .min(1, 'Notion Token is required')
+    .regex(/^(secret_|ntn_)/, 'Invalid token format, must start with secret_ or ntn_'),
+  databaseUrl: z.string().min(1, 'Database URL is required')
 })
 
 // ========== 字段映射选择器 ==========
@@ -53,6 +53,7 @@ interface FieldSelectProps {
   typeLabel: string // "Title/Text" | "Status" | "Date"
   onChange: (value: string | null) => void
   placeholder?: string
+  icon?: React.ReactNode
 }
 
 function FieldSelect({
@@ -62,13 +63,19 @@ function FieldSelect({
   filterTypes,
   typeLabel,
   onChange,
-  placeholder = '选择字段…'
+  placeholder = 'Select a field...',
+  icon
 }: FieldSelectProps): React.JSX.Element {
   const filteredOptions = options.filter((p) => filterTypes.includes(p.type))
 
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <span className="w-4 h-4 flex items-center justify-center shrink-0">
+          {icon}
+        </span>
+        {label}
+      </label>
       <div className="relative">
         <select
           value={value || ''}
@@ -85,7 +92,7 @@ function FieldSelect({
         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       </div>
       {filteredOptions.length === 0 && (
-        <p className="text-xs text-amber-600">数据库中没有 {filterTypes.join('/')} 类型的字段</p>
+        <p className="text-xs text-amber-600">No {filterTypes.join('/')} type fields in database</p>
       )}
     </div>
   )
@@ -176,7 +183,7 @@ export function SettingsModal({
         setSchema(result.properties)
         setDataSourceId(result.dataSourceId ?? null)
       } else {
-        setSchemaError(result.error?.userMessage || '无法获取数据库结构')
+        setSchemaError(result.error?.userMessage || 'Failed to load database schema')
       }
     } catch (error) {
       setSchemaError(String(error))
@@ -226,7 +233,7 @@ export function SettingsModal({
         onDisconnected?.()
         onClose()
       } else {
-        setErrors({ general: '断开连接失败，请重试' })
+        setErrors({ general: 'Failed to disconnect, please try again' })
         setShowDisconnectConfirm(false)
       }
     } catch (error) {
@@ -261,7 +268,7 @@ export function SettingsModal({
           onSaved()
           onClose()
         } else {
-          setErrors({ general: response.error?.userMessage || '保存失败' })
+          setErrors({ general: response.error?.userMessage || 'Save failed' })
         }
       } catch (error) {
         setErrors({ general: String(error) })
@@ -285,7 +292,7 @@ export function SettingsModal({
 
     const databaseId = parseDatabaseId(databaseUrl)
     if (!databaseId) {
-      setErrors({ databaseUrl: '无法解析 Database ID，请检查 URL 格式' })
+      setErrors({ databaseUrl: 'Cannot parse Database ID, please check URL format' })
       return
     }
 
@@ -299,7 +306,7 @@ export function SettingsModal({
         setActiveTab('field-mapping')
         loadSchema()
       } else {
-        setErrors({ general: response.error?.userMessage || '验证失败' })
+        setErrors({ general: response.error?.userMessage || 'Verification failed' })
       }
     } catch (error) {
       setErrors({ general: String(error) })
@@ -318,7 +325,7 @@ export function SettingsModal({
         onSaved()
         onClose()
       } else {
-        setErrors({ general: response.error || '保存映射失败' })
+        setErrors({ general: response.error || 'Failed to save mapping' })
       }
     } catch (error) {
       setErrors({ general: String(error) })
@@ -367,7 +374,7 @@ export function SettingsModal({
             onClick={handleCancel}
             className="w-[28px] h-[28px] rounded-lg flex items-center justify-center hover:opacity-80 transition-opacity"
             style={{ background: 'rgba(255,255,255,0.25)' }}
-            aria-label="关闭"
+            aria-label="Close"
           >
             <X className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
@@ -486,7 +493,7 @@ export function SettingsModal({
                         </span>
                       </div>
                     ) : (
-                      <span className="text-amber-600">⚠ 无法解析 Database ID</span>
+                      <span className="text-amber-600">⚠ Cannot parse Database ID</span>
                     )}
                   </div>
                 )}
@@ -500,46 +507,34 @@ export function SettingsModal({
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
                   <p className="text-xs text-amber-700">
-                    先在 Connection 里 Save & Verify
+                    Save & Verify in Connection first
                   </p>
                 </div>
               ) : isLoadingSchema ? (
-                <p className="text-xs text-muted-foreground">正在加载数据库结构…</p>
+                <p className="text-xs text-muted-foreground">Loading database schema...</p>
               ) : schemaError ? (
                 <div className="space-y-2">
                   <p className="text-xs text-destructive">{schemaError}</p>
                   <Button variant="outline" size="sm" onClick={loadSchema}>
-                    重试
+                    Retry
                   </Button>
                 </div>
               ) : schema.length > 0 ? (
                 <>
-                  {fieldMapping.textPropertyId &&
-                  fieldMapping.statusPropertyId &&
-                  fieldMapping.timePropertyId ? (
-                    <div className="flex items-center gap-2 text-xs text-green-600">
-                      <CheckCircle className="h-3.5 w-3.5" />
-                      <span>已配置字段映射</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      <span>配置 Text / Status / Time 以正确显示任务列表</span>
-                    </div>
-                  )}
-
                   <FieldSelect
-                    label="Text (Task name)"
+                    label="Text"
+                    icon={<Type className="h-4 w-4 shrink-0" />}
                     value={fieldMapping.textPropertyId}
                     options={schema}
                     filterTypes={['title', 'rich_text']}
-                    typeLabel="Title/Text"
+                    typeLabel="Text"
                     onChange={(v) =>
                       setFieldMapping((prev) => ({ ...prev, textPropertyId: v }))
                     }
                   />
                   <FieldSelect
                     label="Status"
+                    icon={<Loader className="h-4 w-4 shrink-0" />}
                     value={fieldMapping.statusPropertyId}
                     options={schema}
                     filterTypes={['status']}
@@ -549,7 +544,8 @@ export function SettingsModal({
                     }
                   />
                   <FieldSelect
-                    label="Time"
+                    label="Date"
+                    icon={<Calendar className="h-4 w-4 shrink-0" />}
                     value={fieldMapping.timePropertyId}
                     options={schema}
                     filterTypes={['date']}

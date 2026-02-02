@@ -264,7 +264,7 @@ function TaskItem({
                   className={`flex-1 text-sm font-medium leading-[1.4] truncate min-w-0 ${
                     canEdit ? 'cursor-pointer hover:text-foreground/80' : ''
                   }`}
-                  title={canEdit ? `点击编辑：${task.title}` : undefined}
+                  title={canEdit ? `Click to edit: ${task.title}` : undefined}
                   onClick={handleTitleClick}
                 >
                   {task.title}
@@ -274,8 +274,8 @@ function TaskItem({
             <button
               onClick={handleOpenInNotion}
               className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted transition-opacity"
-              title="在 Notion 中打开"
-              aria-label={`在 Notion 中打开：${task.title}`}
+              title="Open in Notion"
+              aria-label={`Open in Notion: ${task.title}`}
             >
               <ExternalLink className="h-3 w-3 text-muted-foreground" />
             </button>
@@ -294,7 +294,7 @@ function TaskItem({
                   canEdit ? 'cursor-pointer hover:opacity-80' : ''
                 }`}
                 style={{ background: statusStyle.bg, color: statusStyle.text }}
-                title={canEdit ? '点击更改状态' : undefined}
+                title={canEdit ? 'Click to change status' : undefined}
                 disabled={!canEdit}
               >
                 {task.status || 'No status'}
@@ -348,7 +348,7 @@ function TaskItem({
                 className={`text-xs ${getDueColor(task.due)} ${
                   canEdit ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
                 }`}
-                title={canEdit ? '点击设置截止日期' : undefined}
+                title={canEdit ? 'Click to set due date' : undefined}
               >
                 {task.due ? formatDue(task.due) : <span className="text-muted-foreground">—</span>}
               </span>
@@ -384,7 +384,7 @@ function ErrorDisplay({ error, onRetry, onOpenSettings }: ErrorDisplayProps): Re
     <div className="flex flex-col items-center justify-center gap-3 py-16 px-5">
       <CircleAlert className="h-8 w-8 shrink-0" style={{ color: '#FF3B30' }} />
       <p className="text-xs font-medium text-center" style={{ color: '#FF3B30' }}>
-        {isMappingError ? '请配置字段映射' : 'Failed to load tasks'}
+        {isMappingError ? 'Please configure field mapping' : 'Failed to load tasks'}
       </p>
       <p className="text-xs text-muted-foreground text-center whitespace-pre-wrap">
         {error.userMessage}
@@ -396,7 +396,7 @@ function ErrorDisplay({ error, onRetry, onOpenSettings }: ErrorDisplayProps): Re
           className="h-9 px-[18px] rounded-lg text-[13px] font-medium bg-white/25 border-white/50"
           onClick={onOpenSettings}
         >
-          前往 Field Mapping 配置
+          Go to Field Mapping
         </Button>
       )}
       {isPermissionError && (
@@ -788,7 +788,7 @@ export function TaskList({
   if (!isConfigured) {
     return (
       <div className="p-4 text-center">
-        <p className="text-sm text-muted-foreground">请先配置 Notion 连接</p>
+        <p className="text-sm text-muted-foreground">Please configure Notion connection first</p>
       </div>
     )
   }
@@ -868,7 +868,7 @@ export function TaskList({
               className="flex items-center justify-center transition-colors hover:opacity-80"
               style={{ width: 20, height: 20 }}
               title="Settings"
-              aria-label="打开设置"
+              aria-label="Open settings"
             >
               <Settings2 style={{ width: 16, height: 16, color: '#737373' }} />
             </button>

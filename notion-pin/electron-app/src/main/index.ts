@@ -142,7 +142,7 @@ function validateMapping(
   currentDataSourceId: string | null
 ): { status: MappingStatus; message?: string } {
   if (!mapping) {
-    return { status: 'not_configured', message: '请先配置字段映射' }
+    return { status: 'not_configured', message: 'Please configure field mapping first' }
   }
 
   // 检查 dataSourceId 变化
@@ -158,7 +158,7 @@ function validateMapping(
     if (!mapping.timePropertyId) missing.push('Time')
     return {
       status: 'incomplete',
-      message: `请配置以下字段映射: ${missing.join(', ')}`
+      message: `Please configure these field mappings: ${missing.join(', ')}`
     }
   }
 
@@ -658,7 +658,7 @@ function setupIPC(): void {
           error: {
             code: 'invalid_url',
             message: 'Cannot parse database ID',
-            userMessage: '无法解析 Database ID，请检查 URL 格式'
+            userMessage: 'Cannot parse Database ID, please check URL format'
           }
         }
       }
@@ -677,7 +677,7 @@ function setupIPC(): void {
             error: {
               code: 'no_data_source',
               message: 'No data source found',
-              userMessage: 'Database 中没有找到 Data Source，请确保 Database 有数据'
+              userMessage: 'No Data Source found in Database, please ensure Database has data'
             }
           }
         }
@@ -712,7 +712,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '连接测试失败：' + String(error)
+            userMessage: 'Connection test failed: ' + String(error)
           }
         }
       }
@@ -741,7 +741,7 @@ function setupIPC(): void {
           error: {
             code: 'not_configured',
             message: 'Not configured',
-            userMessage: '请先在 Connection 中 Save & Verify'
+            userMessage: 'Please Save & Verify in Connection first'
           }
         }
       }
@@ -758,7 +758,7 @@ function setupIPC(): void {
               error: dbResult.error || {
                 code: 'no_data_source',
                 message: 'No data source found',
-                userMessage: '请先在 Connection 中 Save & Verify'
+                userMessage: 'Please Save & Verify in Connection first'
               }
             }
           }
@@ -781,7 +781,7 @@ function setupIPC(): void {
             error: result.error || {
               code: 'no_properties',
               message: 'No properties found',
-              userMessage: '无法获取数据库结构'
+              userMessage: 'Failed to load database schema'
             }
           }
         }
@@ -791,7 +791,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '获取数据库结构时发生错误'
+            userMessage: 'Error loading database schema'
           }
         }
       }
@@ -868,7 +868,7 @@ function setupIPC(): void {
           error: {
             code: 'no_token',
             message: 'Token not configured',
-            userMessage: '请先在设置中配置 Notion Token'
+            userMessage: 'Please configure Notion Token in settings first'
           }
         }
       }
@@ -879,7 +879,7 @@ function setupIPC(): void {
           error: {
             code: 'no_database',
             message: 'Database not configured',
-            userMessage: '请先在设置中配置 Database URL'
+            userMessage: 'Please configure Database URL in settings first'
           }
         }
       }
@@ -906,7 +906,7 @@ function setupIPC(): void {
               error: {
                 code: 'no_data_source',
                 message: 'No data source found',
-                userMessage: 'Database 中没有找到 Data Source，请确保 Database 有数据'
+                userMessage: 'No Data Source found in Database, please ensure Database has data'
               }
             }
           }
@@ -927,7 +927,7 @@ function setupIPC(): void {
             error: {
               code: 'mapping_invalid',
               message: validation.message || 'Mapping invalid',
-              userMessage: 'Database 已变更，请前往 Field Mapping 重新配置字段映射'
+              userMessage: 'Database changed, please reconfigure field mapping'
             }
           }
         }
@@ -937,7 +937,7 @@ function setupIPC(): void {
             error: {
               code: 'mapping_not_configured',
               message: validation.message || 'Mapping not configured',
-              userMessage: '请先在 Settings → Field Mapping 中配置 Text / Status / Time 字段映射'
+              userMessage: 'Please configure Text / Status / Time mapping in Settings → Field Mapping'
             }
           }
         }
@@ -956,7 +956,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '查询任务时发生错误：' + String(error)
+            userMessage: 'Error querying tasks: ' + String(error)
           }
         }
       }
@@ -983,7 +983,7 @@ function setupIPC(): void {
           error: {
             code: 'not_configured',
             message: 'Not configured',
-            userMessage: '请先配置 Notion Token 和 Database'
+            userMessage: 'Please configure Notion Token and Database first'
           }
         }
       }
@@ -1014,7 +1014,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '验证 Database 时发生错误'
+            userMessage: 'Error verifying Database'
           }
         }
       }
@@ -1047,7 +1047,7 @@ function setupIPC(): void {
           error: {
             code: 'not_configured',
             message: 'Not configured',
-            userMessage: '请先配置 Notion Token 和 Database'
+            userMessage: 'Please configure Notion Token and Database first'
           }
         }
       }
@@ -1063,7 +1063,7 @@ function setupIPC(): void {
               error: dbResult.error || {
                 code: 'no_data_source',
                 message: 'No data source found',
-                userMessage: '请先在 Connection 中 Save & Verify'
+                userMessage: 'Please Save & Verify in Connection first'
               }
             }
           }
@@ -1084,7 +1084,7 @@ function setupIPC(): void {
             error: result.error || {
               code: 'no_properties',
               message: 'No properties found',
-              userMessage: '无法获取数据库结构'
+              userMessage: 'Failed to load database schema'
             }
           }
         }
@@ -1094,7 +1094,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '获取数据库结构时发生错误'
+            userMessage: 'Error loading database schema'
           }
         }
       }
@@ -1123,7 +1123,7 @@ function setupIPC(): void {
           error: {
             code: 'PAYWALL_LOCKED',
             message: 'Editing requires a paid subscription',
-            userMessage: '编辑功能需要付费订阅，请升级您的计划'
+            userMessage: 'Editing requires a paid subscription, please upgrade your plan'
           }
         }
       }
@@ -1137,7 +1137,7 @@ function setupIPC(): void {
           error: {
             code: 'no_token',
             message: 'Token not configured',
-            userMessage: '请先在设置中配置 Notion Token'
+            userMessage: 'Please configure Notion Token in settings first'
           }
         }
       }
@@ -1149,7 +1149,7 @@ function setupIPC(): void {
           error: {
             code: 'no_database',
             message: 'Database not configured',
-            userMessage: '请先在设置中配置 Database URL'
+            userMessage: 'Please configure Database URL in settings first'
           }
         }
       }
@@ -1175,7 +1175,7 @@ function setupIPC(): void {
           error: {
             code: 'no_field_mapping',
             message: 'Field mapping not configured',
-            userMessage: '请先在设置 → Field Mapping 中配置字段映射'
+            userMessage: 'Please configure field mapping in Settings → Field Mapping'
           }
         }
       }
@@ -1209,7 +1209,7 @@ function setupIPC(): void {
           error: {
             code: 'unknown',
             message: String(error),
-            userMessage: '更新任务时发生错误：' + String(error)
+            userMessage: 'Error updating task: ' + String(error)
           }
         }
       }
