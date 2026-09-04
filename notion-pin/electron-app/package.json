@@ -1,27 +1,42 @@
 {
-  "name": "electron-app",
+  "name": "notion-pin",
+  "productName": "NotionPin",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "A lightweight always-on-top macOS task window for Notion databases.",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "crazzzzhao",
+  "license": "MIT",
+  "homepage": "https://github.com/crazzzzhao/notionpin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crazzzzhao/notionpin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crazzzzhao/notionpin/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint --cache .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:mac": "npm run build && electron-builder --mac --arm64 --x64",
+    "build:mac:arm64": "npm run build && electron-builder --mac --arm64",
+    "build:mac:x64": "npm run build && electron-builder --mac --x64"
   },
   "dependencies": {
-    "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@notionhq/client": "^5.8.0",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -34,7 +49,6 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "electron-store": "^11.0.2",
-    "electron-updater": "^6.3.9",
     "lucide-react": "^0.563.0",
     "motion": "^12.29.2",
     "react-day-picker": "^9.13.0",
@@ -52,7 +66,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",
-    "electron": "^39.2.6",
+    "electron": "^44.2.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
@@ -65,6 +79,7 @@
     "react-dom": "^19.2.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^5.0.0"
   }
 }

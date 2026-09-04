@@ -401,9 +401,7 @@ export class NotionService {
         // Text: title 或 rich_text
         const propId = fieldMapping.textPropertyId
         const propType = propId && propertyTypes ? propertyTypes[propId] : 'title'
-        const textContent = [
-          { type: 'text' as const, text: { content: value || '' } }
-        ]
+        const textContent = [{ type: 'text' as const, text: { content: value || '' } }]
         if (propType === 'rich_text') {
           return { rich_text: textContent }
         }
@@ -468,13 +466,11 @@ export class NotionService {
           }
           const opts = p.status?.options ?? p.select?.options
           if (Array.isArray(opts) && opts.length > 0) {
-            schema.options = opts.map(
-              (o: { id?: string; name?: string; color?: string }) => ({
-                id: o.id ?? '',
-                name: o.name ?? '',
-                color: o.color ?? 'default'
-              })
-            )
+            schema.options = opts.map((o: { id?: string; name?: string; color?: string }) => ({
+              id: o.id ?? '',
+              name: o.name ?? '',
+              color: o.color ?? 'default'
+            }))
           }
           properties.push(schema)
         }
@@ -519,13 +515,11 @@ export class NotionService {
           // status 或 select 类型：提取 options（含 color）
           const opts = p.status?.options ?? p.select?.options
           if (Array.isArray(opts) && opts.length > 0) {
-            schema.options = opts.map(
-              (o: { id?: string; name?: string; color?: string }) => ({
-                id: o.id ?? '',
-                name: o.name ?? '',
-                color: o.color ?? 'default'
-              })
-            )
+            schema.options = opts.map((o: { id?: string; name?: string; color?: string }) => ({
+              id: o.id ?? '',
+              name: o.name ?? '',
+              color: o.color ?? 'default'
+            }))
           }
           properties.push(schema)
         }
@@ -576,9 +570,7 @@ export class NotionService {
       if (fieldMapping?.timePropertyId) filterProperties.push(fieldMapping.timePropertyId)
 
       // 构建 sorts - 使用 timestamp 排序（最可靠）
-      const sorts = [
-        { timestamp: 'last_edited_time' as const, direction: 'descending' as const }
-      ]
+      const sorts = [{ timestamp: 'last_edited_time' as const, direction: 'descending' as const }]
 
       // 调用 API - 使用 filter_properties 优化
       const response = await this.client.dataSources.query({
@@ -634,9 +626,7 @@ export class NotionService {
    * 查询所有任务（自动分页）
    * 最多拉取 MAX_PAGES 页
    */
-  async queryAllTasks(
-    options: Omit<QueryTasksOptions, 'cursor'>
-  ): Promise<QueryTasksResult> {
+  async queryAllTasks(options: Omit<QueryTasksOptions, 'cursor'>): Promise<QueryTasksResult> {
     const allTasks: NotionTask[] = []
     let cursor: string | undefined = undefined
     let pageCount = 0

@@ -3,9 +3,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { Button } from '@/components/ui/button'
 import { ChevronDown, ChevronUp, RotateCw, X, CircleCheck, CircleX, Unplug } from 'lucide-react'
 import { TaskList } from '@/components/TaskList'
-import { BillingPopover } from '@/components/BillingPopover'
 import { SettingsModal } from '@/components/SettingsModal'
-import type { BillingPlan } from '../../preload'
 
 // 刷新 Toast - 设计稿 9kFMa (Success) / RnTAS (Error) 100% 复刻
 // padding 12 16, gap 12, cornerRadius 8, bg #fff, border #e5e5e5
@@ -72,9 +70,7 @@ function NotConnectedState({ onOpenSettings }: NotConnectedStateProps): React.JS
         <Unplug className="w-7 h-7 text-muted-foreground" />
       </div>
       <div className="text-center space-y-1.5">
-        <h3 className="text-[15px] font-semibold text-foreground">
-          Notion not connected
-        </h3>
+        <h3 className="text-[15px] font-semibold text-foreground">Notion not connected</h3>
         <p className="text-[13px] text-muted-foreground">
           Add your Notion token and database to view tasks.
         </p>
@@ -126,9 +122,10 @@ function AppContent(): React.JSX.Element {
     },
     []
   )
-  const [refreshToast, setRefreshToast] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null
-  )
+  const [refreshToast, setRefreshToast] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [settings, setSettings] = useState<SettingsState>({
     isTokenConfigured: false,
@@ -137,10 +134,6 @@ function AppContent(): React.JSX.Element {
     dataSourceId: null,
     fieldMapping: null
   })
-  // Billing state
-  const [canEdit, setCanEdit] = useState(false)
-  const [billingPlan, setBillingPlan] = useState<BillingPlan>('free')
-
   // Settings Dialog state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
@@ -157,48 +150,29 @@ function AppContent(): React.JSX.Element {
     }
   }, [queryClient])
 
-  // 加载 Billing 状态
-  const loadBilling = useCallback(async () => {
-    try {
-      const entitlement = await window.billingAPI.getEntitlement()
-      setBillingPlan(entitlement.plan)
-      const canEditResult = await window.billingAPI.canEdit()
-      setCanEdit(canEditResult)
-    } catch (error) {
-      console.error('Failed to load billing:', error)
-      setCanEdit(false)
-      setBillingPlan('free')
-    }
-  }, [])
-
-  // 初始化：获取窗口状态、设置和 Billing 状态
+  // 初始化：获取窗口状态和设置
   useEffect(() => {
-    Promise.all([
-      window.windowAPI.getWindowState(),
-      window.settingsAPI.load(),
-      window.billingAPI.getEntitlement(),
-      window.billingAPI.canEdit()
-    ]).then(([windowState, settingsData, entitlement, canEditResult]) => {
-      setIsCollapsed(windowState.isCollapsed)
-      setSettings(settingsData)
-      setBillingPlan(entitlement.plan)
-      setCanEdit(canEditResult)
-    }).catch((err) => {
-      console.error('Failed to initialize app:', err)
-      // 降级处理：使用默认值，允许用户继续操作
-    }).finally(() => {
-      setIsLoading(false) // 确保 loading 状态结束
-    })
+    Promise.all([window.windowAPI.getWindowState(), window.settingsAPI.load()])
+      .then(([windowState, settingsData]) => {
+        setIsCollapsed(windowState.isCollapsed)
+        setSettings(settingsData)
+      })
+      .catch((err) => {
+        console.error('Failed to initialize app:', err)
+        // 降级处理：使用默认值，允许用户继续操作
+      })
+      .finally(() => {
+        setIsLoading(false) // 确保 loading 状态结束
+      })
   }, [])
 
   // Settings 独立窗口关闭后刷新主窗口
   useEffect(() => {
     const unsub = window.windowAPI.onSettingsWindowClosed(() => {
       loadSettings()
-      loadBilling()
     })
     return unsub
-  }, [loadSettings, loadBilling])
+  }, [loadSettings])
 
   // 切换收起/展开 - 丝滑动画
   const [isPending, startTransition] = useTransition()
@@ -228,7 +202,7 @@ function AppContent(): React.JSX.Element {
       if (e.target !== e.currentTarget || !collapsing || e.propertyName !== 'opacity') return
       if (transitionEndHandled.current) return
       transitionEndHandled.current = true
-      
+
       // 使用 requestAnimationFrame 确保平滑过渡
       requestAnimationFrame(() => {
         setCollapsing(false)
@@ -252,9 +226,10 @@ function AppContent(): React.JSX.Element {
       await queryControls.refetch()
       setRefreshToast({ type: 'success', message: 'Tasks refreshed successfully' })
     } catch (err) {
-      const msg = err && typeof err === 'object' && 'userMessage' in err
-        ? String((err as { userMessage: string }).userMessage)
-        : 'Failed to refresh tasks'
+      const msg =
+        err && typeof err === 'object' && 'userMessage' in err
+          ? String((err as { userMessage: string }).userMessage)
+          : 'Failed to refresh tasks'
       setRefreshToast({ type: 'error', message: msg })
     }
   }, [queryControls])
@@ -297,54 +272,13 @@ function AppContent(): React.JSX.Element {
       {/* Header - 设计稿 .title-bar 48px */}
       <header
         className="flex items-center justify-between h-12 px-4 shrink-0"
-        style={{
-          WebkitAppRegion: 'drag'
-        } as React.CSSProperties}
+        style={
+          {
+            WebkitAppRegion: 'drag'
+          } as React.CSSProperties
+        }
       >
-        {/* 左侧：NotionPin + Plan tag */}
-        {/* 所有 plan tag 均可点击打开 Billing Popover（含 Lifetime，方便降级到 Free） */}
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-foreground">NotionPin</span>
-          <BillingPopover
-            trigger={
-              <button
-                type="button"
-                className="flex items-center h-[17px] rounded-[10px] px-2 py-0.5 hover:opacity-80 transition-opacity cursor-pointer"
-                style={{
-                  background:
-                    billingPlan === 'lifetime'
-                      ? 'rgba(34, 197, 94, 0.15)'
-                      : billingPlan === 'free'
-                        ? 'rgba(155, 154, 151, 0.15)'
-                        : 'rgba(0, 122, 255, 0.15)',
-                  color:
-                    billingPlan === 'lifetime'
-                      ? '#16a34a'
-                      : billingPlan === 'free'
-                        ? '#737373'
-                        : '#007AFF',
-                  WebkitAppRegion: 'no-drag'
-                } as React.CSSProperties}
-                title={
-                  billingPlan === 'lifetime'
-                    ? 'Manage subscription'
-                    : billingPlan === 'free'
-                      ? 'Upgrade to Pro'
-                      : 'Manage subscription'
-                }
-              >
-                <span className="text-[11px] font-medium">
-                  {billingPlan === 'lifetime'
-                    ? 'Lifetime access'
-                    : billingPlan === 'free'
-                      ? 'Free plan'
-                      : 'Pro plan'}
-                </span>
-              </button>
-            }
-            onPlanChanged={loadBilling}
-          />
-        </div>
+        <span className="text-base font-semibold text-foreground">NotionPin</span>
 
         {/* 右侧：Refresh, Toggle, Close - 设计稿 20x20 */}
         <div
@@ -400,8 +334,8 @@ function AppContent(): React.JSX.Element {
           className="flex-1 flex flex-col overflow-hidden transition-smooth"
           style={{
             opacity: collapsing ? 0 : 1,
-            transform: collapsing 
-              ? 'translateY(-4px) scale(0.98) translateZ(0)' 
+            transform: collapsing
+              ? 'translateY(-4px) scale(0.98) translateZ(0)'
               : 'translateY(0) scale(1) translateZ(0)'
           }}
           onTransitionEnd={handleCollapseTransitionEnd}
@@ -419,7 +353,6 @@ function AppContent(): React.JSX.Element {
                 fieldMapping={settings.fieldMapping}
                 onOpenSettings={handleOpenSettings}
                 onQueryReady={handleQueryReady}
-                canEdit={canEdit}
               />
             </div>
           )}
@@ -435,7 +368,7 @@ function AppContent(): React.JSX.Element {
         </main>
       )}
 
-      {/* Settings Dialog - 与 Billing Dialog 一致的模糊背景弹窗 */}
+      {/* Settings Dialog */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={handleCloseSettings}

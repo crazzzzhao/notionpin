@@ -67,7 +67,7 @@ export function AppModal({
         {/* Header - 使用 shadcn muted 背景色 + 底部阴影 */}
         <div
           className="flex items-center justify-between px-5 py-[18px] shrink-0 relative z-10 bg-muted/50 border-b border-border"
-          style={{ 
+          style={{
             boxShadow: '0 1px 4px -1px rgba(0, 0, 0, 0.06)'
           }}
         >
@@ -83,10 +83,7 @@ export function AppModal({
         </div>
 
         {/* Content - 内容区域，超出时滚动 */}
-        <div
-          className="flex-1 min-h-0 overflow-y-auto"
-          style={{ maxHeight: maxContentHeight }}
-        >
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: maxContentHeight }}>
           {children}
         </div>
 

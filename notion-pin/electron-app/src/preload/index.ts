@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
 // Window 控制 API
 const windowAPI = {
@@ -78,8 +77,7 @@ const settingsAPI = {
     token: string
     databaseUrl: string
     databaseId: string
-  }): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('settings:save', data),
+  }): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('settings:save', data),
 
   // 加载设置（不返回 token 明文）
   load: (): Promise<{
@@ -91,9 +89,7 @@ const settingsAPI = {
   }> => ipcRenderer.invoke('settings:load'),
 
   // 保存字段映射
-  saveFieldMapping: (
-    mapping: FieldMapping
-  ): Promise<{ success: boolean; error?: string }> =>
+  saveFieldMapping: (mapping: FieldMapping): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('settings:saveFieldMapping', mapping),
 
   // 清除设置
@@ -131,33 +127,6 @@ export interface PropertyUpdate {
   value: string | null
 }
 
-// ========== Billing Types ==========
-
-export type BillingPlan = 'free' | 'monthly' | 'lifetime'
-
-export interface Entitlement {
-  plan: BillingPlan
-  purchasedAt: string | null
-  expiresAt: string | null
-}
-
-// Billing API
-const billingAPI = {
-  // 获取当前订阅权限
-  getEntitlement: (): Promise<Entitlement> => ipcRenderer.invoke('billing:getEntitlement'),
-
-  // 设置订阅权限 (仅用于模拟购买)
-  setEntitlement: (entitlement: Entitlement): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('billing:setEntitlement', entitlement),
-
-  // 重置为免费计划
-  resetEntitlement: (): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('billing:resetEntitlement'),
-
-  // 检查是否可以编辑
-  canEdit: (): Promise<boolean> => ipcRenderer.invoke('billing:canEdit')
-}
-
 const notionAPI = {
   // 测试连接（Save & Verify）
   testConnection: (data: {
@@ -180,9 +149,7 @@ const notionAPI = {
   }> => ipcRenderer.invoke('notion:getSchema'),
 
   // 保存字段映射
-  saveFieldMapping: (
-    mapping: FieldMapping
-  ): Promise<{ success: boolean; error?: string }> =>
+  saveFieldMapping: (mapping: FieldMapping): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('notion:saveFieldMapping', mapping),
 
   // 加载字段映射
@@ -237,23 +204,17 @@ const notionAPI = {
 // Context isolation is always enabled for security
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('windowAPI', windowAPI)
     contextBridge.exposeInMainWorld('settingsAPI', settingsAPI)
     contextBridge.exposeInMainWorld('notionAPI', notionAPI)
-    contextBridge.exposeInMainWorld('billingAPI', billingAPI)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.windowAPI = windowAPI
   // @ts-ignore (define in dts)
   window.settingsAPI = settingsAPI
   // @ts-ignore (define in dts)
   window.notionAPI = notionAPI
-  // @ts-ignore (define in dts)
-  window.billingAPI = billingAPI
 }

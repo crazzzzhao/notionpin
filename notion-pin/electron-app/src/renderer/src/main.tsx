@@ -1,5 +1,6 @@
 import './globals.css'
 import './assets/main.css'
+import './browserPreloadShim'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -10,7 +11,5 @@ import { SettingsWindow } from './SettingsWindow'
 const isSettingsWindow = /#?settings\//.test(window.location.hash)
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    {isSettingsWindow ? <SettingsWindow /> : <App />}
-  </StrictMode>
+  <StrictMode>{isSettingsWindow ? <SettingsWindow /> : <App />}</StrictMode>
 )

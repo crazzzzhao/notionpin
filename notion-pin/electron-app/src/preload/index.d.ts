@@ -1,5 +1,3 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
-
 export interface WindowAPI {
   toggleCollapsed: () => Promise<boolean>
   getWindowState: () => Promise<{
@@ -145,56 +143,12 @@ export interface ValidateMappingResult {
   timeValid?: boolean
 }
 
-// ========== Billing Types ==========
-
-/**
- * 订阅计划类型
- */
-export type BillingPlan = 'free' | 'monthly' | 'lifetime'
-
-/**
- * 订阅权限数据结构
- */
-export interface Entitlement {
-  plan: BillingPlan
-  purchasedAt: string | null // ISO date string
-  expiresAt: string | null // ISO date string, null for lifetime
-}
-
-/**
- * Billing API
- */
-export interface BillingAPI {
-  /**
-   * 获取当前订阅权限
-   */
-  getEntitlement: () => Promise<Entitlement>
-
-  /**
-   * 设置订阅权限 (仅用于模拟购买)
-   */
-  setEntitlement: (entitlement: Entitlement) => Promise<{ success: boolean }>
-
-  /**
-   * 重置为免费计划
-   */
-  resetEntitlement: () => Promise<{ success: boolean }>
-
-  /**
-   * 检查是否可以编辑
-   */
-  canEdit: () => Promise<boolean>
-}
-
 export interface NotionAPI {
   /**
    * 测试连接（Save & Verify）
    * 验证 token 和 databaseUrl，获取 dataSourceId
    */
-  testConnection: (data: {
-    token: string
-    databaseUrl: string
-  }) => Promise<TestConnectionResult>
+  testConnection: (data: { token: string; databaseUrl: string }) => Promise<TestConnectionResult>
 
   /**
    * 获取 Schema（用于字段映射）
@@ -219,10 +173,7 @@ export interface NotionAPI {
   /**
    * 查询任务列表
    */
-  queryTasks: (options?: {
-    statusFilter?: StatusFilterKey
-    cursor?: string
-  }) => Promise<{
+  queryTasks: (options?: { statusFilter?: StatusFilterKey; cursor?: string }) => Promise<{
     success: boolean
     tasks?: NotionTask[]
     hasMore?: boolean
@@ -253,10 +204,7 @@ export interface NotionAPI {
   /**
    * 更新任务
    */
-  updateTask: (options: {
-    pageId: string
-    updates: PropertyUpdate[]
-  }) => Promise<{
+  updateTask: (options: { pageId: string; updates: PropertyUpdate[] }) => Promise<{
     success: boolean
     error?: NotionError
   }>
@@ -269,10 +217,8 @@ export interface NotionAPI {
 
 declare global {
   interface Window {
-    electron: ElectronAPI
     windowAPI: WindowAPI
     settingsAPI: SettingsAPI
     notionAPI: NotionAPI
-    billingAPI: BillingAPI
   }
 }

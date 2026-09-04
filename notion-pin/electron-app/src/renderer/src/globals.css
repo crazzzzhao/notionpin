@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   --color-background: hsl(0 0% 100% / 0.72);
@@ -73,7 +73,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
   margin: 0;
@@ -84,8 +85,9 @@ html, body {
 
 body {
   color: hsl(var(--foreground));
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -120,7 +122,7 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .transition-smooth {
     /* 使用更平滑的缓动曲线 - expo ease-out for buttery smooth deceleration */
-    transition: 
+    transition:
       opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     /* GPU 加速 - 强制合成层，提升动画性能 */

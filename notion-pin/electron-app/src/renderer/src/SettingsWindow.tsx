@@ -22,9 +22,7 @@ function parseHashTab(): 'connection' | 'field-mapping' {
 }
 
 function SettingsWindowContent(): React.JSX.Element {
-  const [initialTab, setInitialTab] = useState<'connection' | 'field-mapping'>(() =>
-    parseHashTab()
-  )
+  const [initialTab, setInitialTab] = useState<'connection' | 'field-mapping'>(() => parseHashTab())
   const [settings, setSettings] = useState<{
     databaseUrl: string | null
     fieldMapping: FieldMapping | null

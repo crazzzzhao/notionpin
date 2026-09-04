@@ -89,7 +89,6 @@ interface TaskItemProps {
   onUpdate: (pageId: string, updates: PropertyUpdate[]) => void
   isUpdating: boolean
   updateError: NotionError | null
-  canEdit: boolean
 }
 
 function TaskItem({
@@ -97,8 +96,7 @@ function TaskItem({
   statusOptions,
   onUpdate,
   isUpdating,
-  updateError,
-  canEdit
+  updateError
 }: TaskItemProps): React.JSX.Element {
   // 编辑状态
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -128,13 +126,6 @@ function TaskItem({
     }
   }, [isEditingTitle])
 
-  // 当 task.title 外部变化时，同步 editTitle（仅在非编辑状态）
-  useEffect(() => {
-    if (!isEditingTitle) {
-      setEditTitle(task.title)
-    }
-  }, [task.title, isEditingTitle])
-
   const handleOpenInNotion = (): void => {
     // 使用安全的 preload API 打开外部链接（仅允许 notion.so 域名）
     window.windowAPI.openExternal(task.url)
@@ -142,7 +133,6 @@ function TaskItem({
 
   // ========== Title 编辑 ==========
   const handleTitleClick = (): void => {
-    if (!canEdit) return
     setEditTitle(task.title)
     setIsEditingTitle(true)
   }
@@ -193,13 +183,26 @@ function TaskItem({
     const date = new Date(due)
     // 检查是否为有效日期
     if (isNaN(date.getTime())) return ''
-    
+
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
     if (date.toDateString() === today.toDateString()) return 'Today'
     if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ]
     return `${months[date.getMonth()]} ${date.getDate()}`
   }
 
@@ -230,9 +233,7 @@ function TaskItem({
 
   return (
     <div
-      className={`group relative rounded-lg transition-colors ${
-        isUpdating ? 'opacity-70' : ''
-      }`}
+      className={`group relative rounded-lg transition-colors ${isUpdating ? 'opacity-70' : ''}`}
     >
       {/* 设计稿 .task-item: padding 12, vertical layout */}
       <div className="flex flex-col gap-1.5 p-3 rounded-lg hover:bg-muted/30">
@@ -261,10 +262,8 @@ function TaskItem({
             ) : (
               <div className="flex-1 flex items-center gap-1.5 min-w-0">
                 <p
-                  className={`flex-1 text-sm font-medium leading-[1.4] truncate min-w-0 ${
-                    canEdit ? 'cursor-pointer hover:text-foreground/80' : ''
-                  }`}
-                  title={canEdit ? `Click to edit: ${task.title}` : undefined}
+                  className="flex-1 text-sm font-medium leading-[1.4] truncate min-w-0 cursor-pointer hover:text-foreground/80"
+                  title={`Click to edit: ${task.title}`}
                   onClick={handleTitleClick}
                 >
                   {task.title}
@@ -286,19 +285,13 @@ function TaskItem({
             {/* .task-status: cornerRadius 4, padding 2 6 */}
             <div className="relative" ref={statusRef}>
               <button
-                onClick={() => {
-                  if (!canEdit) return
-                  setShowStatusDropdown(!showStatusDropdown)
-                }}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-opacity ${
-                  canEdit ? 'cursor-pointer hover:opacity-80' : ''
-                }`}
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-opacity cursor-pointer hover:opacity-80"
                 style={{ background: statusStyle.bg, color: statusStyle.text }}
-                title={canEdit ? 'Click to change status' : undefined}
-                disabled={!canEdit}
+                title="Click to change status"
               >
                 {task.status || 'No status'}
-                {canEdit && <ChevronDown className="h-3 w-3" />}
+                <ChevronDown className="h-3 w-3" />
               </button>
               {showStatusDropdown && (
                 <div
@@ -329,7 +322,7 @@ function TaskItem({
               )}
             </div>
             {/* .task-due: 12px, 设计稿 muted-foreground */}
-            {isEditingDue && canEdit ? (
+            {isEditingDue ? (
               <input
                 type="date"
                 value={task.due || ''}
@@ -342,13 +335,9 @@ function TaskItem({
               />
             ) : (
               <span
-                onClick={() => {
-                  if (canEdit) setIsEditingDue(true)
-                }}
-                className={`text-xs ${getDueColor(task.due)} ${
-                  canEdit ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
-                }`}
-                title={canEdit ? 'Click to set due date' : undefined}
+                onClick={() => setIsEditingDue(true)}
+                className={`text-xs ${getDueColor(task.due)} cursor-pointer hover:opacity-80 transition-opacity`}
+                title="Click to set due date"
               >
                 {task.due ? formatDue(task.due) : <span className="text-muted-foreground">—</span>}
               </span>
@@ -377,8 +366,7 @@ interface ErrorDisplayProps {
 function ErrorDisplay({ error, onRetry, onOpenSettings }: ErrorDisplayProps): React.JSX.Element {
   const isPermissionError =
     error.code === 'not_found' || error.code === 'restricted' || error.code === 'unauthorized'
-  const isMappingError =
-    error.code === 'mapping_not_configured' || error.code === 'mapping_invalid'
+  const isMappingError = error.code === 'mapping_not_configured' || error.code === 'mapping_invalid'
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 px-5">
@@ -438,7 +426,9 @@ function EmptyState({ statusFilter }: EmptyStateProps): React.JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16">
       <Inbox className="h-8 w-8 text-muted-foreground opacity-50" />
-      <span className="text-[13px] font-medium text-muted-foreground">{messages[statusFilter]}</span>
+      <span className="text-[13px] font-medium text-muted-foreground">
+        {messages[statusFilter]}
+      </span>
     </div>
   )
 }
@@ -539,18 +529,14 @@ interface TaskListProps {
   isConfigured: boolean
   fieldMapping?: FieldMapping | null
   onOpenSettings?: () => void
-  onQueryReady?: (
-    controls: { refetch: () => Promise<unknown>; isFetching: boolean } | null
-  ) => void
-  canEdit?: boolean
+  onQueryReady?: (controls: { refetch: () => Promise<unknown>; isFetching: boolean } | null) => void
 }
 
 export function TaskList({
   isConfigured,
   fieldMapping,
   onOpenSettings,
-  onQueryReady,
-  canEdit = true
+  onQueryReady
 }: TaskListProps): React.JSX.Element {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<StatusFilterKey>('all')
@@ -573,11 +559,13 @@ export function TaskList({
 
   // 从 schema 中提取 status 选项（仅 status 类型，不含 select）- 使用 useMemo 缓存
   const statusOptions = useMemo<StatusOptionWithColor[]>(() => {
-    const props = schemaData ?? []
+    const schemaProperties = schemaData ?? []
     const statusPropId = fieldMapping?.statusPropertyId
     const prop = statusPropId
-      ? props.find((p) => p.id === statusPropId && p.type === 'status')
-      : props.find((p) => p.type === 'status')
+      ? schemaProperties.find(
+          (property) => property.id === statusPropId && property.type === 'status'
+        )
+      : schemaProperties.find((property) => property.type === 'status')
     return toStatusOptionsWithColor(prop?.options)
   }, [schemaData, fieldMapping?.statusPropertyId])
 
@@ -803,7 +791,7 @@ export function TaskList({
       {/* Task list - 设计稿 padding 8 12, gap 2 */}
       <div className="flex-1 min-h-0 overflow-auto px-3 py-2 relative">
         {/* 刷新时也展示 loading 态 - 设计稿 JdjqO */}
-        {(isLoading || isFetching) ? (
+        {isLoading || isFetching ? (
           <LoadingState />
         ) : isError && error ? (
           <ErrorDisplay
@@ -823,7 +811,6 @@ export function TaskList({
                   onUpdate={handleTaskUpdate}
                   isUpdating={updatingTaskIds.has(task.id)}
                   updateError={null}
-                  canEdit={canEdit}
                 />
                 {index < tasks.length - 1 && (
                   <Separator className="my-0.5 bg-border/50 h-[1.5px]" />
@@ -876,12 +863,8 @@ export function TaskList({
         </div>
       </footer>
 
-      {updateSuccess && (
-        <SonnerToast type="success" onDismiss={handleDismissToast} />
-      )}
-      {updateError && (
-        <SonnerToast type="error" onDismiss={handleDismissToast} />
-      )}
+      {updateSuccess && <SonnerToast type="success" onDismiss={handleDismissToast} />}
+      {updateError && <SonnerToast type="error" onDismiss={handleDismissToast} />}
     </div>
   )
 }

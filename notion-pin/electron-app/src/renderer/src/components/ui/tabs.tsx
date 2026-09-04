@@ -36,7 +36,7 @@ export function AnimatedTabs({
         'relative flex flex-row items-center rounded-lg p-1 text-muted-foreground max-w-full w-full',
         containerClassName
       )}
-      style={{ 
+      style={{
         background: 'rgba(0, 0, 0, 0.04)',
         border: 'none'
       }}

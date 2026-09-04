@@ -1,14 +1,24 @@
 import { app, shell, BrowserWindow, ipcMain, screen, safeStorage } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { prepareLocalConfig } from './configMigration'
+import {
+  isAllowedNotionUrl,
+  isRecord,
+  isValidFieldMapping,
+  isValidNotionToken,
+  isValidQueryTasksInput,
+  isValidUpdateTaskInput,
+  normalizeWindowSize,
+  parseDatabaseId
+} from '../shared/validation'
 import {
   getNotionService,
   clearNotionServiceCache,
   type NotionTask,
   type NotionError,
-  type StatusFilterKey,
-  type PropertyUpdate,
   type UpdateTaskResult,
   type PropertySchema
 } from './services/notionService'
@@ -19,6 +29,8 @@ const WINDOW_MIN_WIDTH = 400
 const WINDOW_MIN_HEIGHT = 52
 const COLLAPSED_HEIGHT = 52
 const EXPANDED_HEIGHT = 420
+
+app.setName('NotionPin')
 
 // ========== 字段映射类型 ==========
 
@@ -36,39 +48,6 @@ interface FieldMapping {
 
 type MappingStatus = 'valid' | 'invalid' | 'incomplete' | 'not_configured'
 
-// ========== Billing Types ==========
-
-type BillingPlan = 'free' | 'monthly' | 'lifetime'
-
-interface Entitlement {
-  plan: BillingPlan
-  purchasedAt: string | null
-  expiresAt: string | null
-}
-
-const DEFAULT_ENTITLEMENT: Entitlement = {
-  plan: 'free',
-  purchasedAt: null,
-  expiresAt: null
-}
-
-/**
- * 检查是否可以编辑
- * - lifetime: 永远可以
- * - monthly: 未过期时可以
- * - free: 不可以
- */
-function canEdit(entitlement: Entitlement): boolean {
-  if (entitlement.plan === 'lifetime') {
-    return true
-  }
-  if (entitlement.plan === 'monthly') {
-    if (!entitlement.expiresAt) return false
-    return new Date(entitlement.expiresAt) > new Date()
-  }
-  return false
-}
-
 // 持久化存储
 interface StoreSchema {
   windowBounds: { x: number; y: number; width: number; height: number } | null
@@ -81,8 +60,6 @@ interface StoreSchema {
   dataSourceId: string | null
   // 字段映射
   fieldMapping: FieldMapping | null
-  // Billing - 订阅权限
-  entitlement: Entitlement | null
 }
 
 /**
@@ -122,9 +99,7 @@ function autoDetectFieldMapping(
 
   // Time: 优先 date 且 name 包含 start/begin，否则第一个 date
   const dateProps = properties.filter((p) => p.type === 'date')
-  const startDateProp = dateProps.find((p) =>
-    /start|begin/i.test(p.name)
-  )
+  const startDateProp = dateProps.find((p) => /start|begin/i.test(p.name))
   if (startDateProp) {
     mapping.timePropertyId = startDateProp.id
   } else if (dateProps.length > 0) {
@@ -170,6 +145,15 @@ let store: import('electron-store').default<StoreSchema>
 
 async function initStore(): Promise<void> {
   const Store = (await import('electron-store')).default
+  const currentConfigPath = join(app.getPath('userData'), 'config.json')
+  const expectedConfigPath = join(app.getPath('appData'), 'NotionPin', 'config.json')
+
+  // Isolated test profiles must never import the user's real legacy configuration.
+  if (currentConfigPath === expectedConfigPath) {
+    const legacyConfigPath = join(app.getPath('appData'), 'electron-app', 'config.json')
+    prepareLocalConfig(legacyConfigPath, currentConfigPath)
+  }
+
   store = new Store<StoreSchema>({
     defaults: {
       windowBounds: null,
@@ -178,8 +162,7 @@ async function initStore(): Promise<void> {
       databaseId: null,
       databaseUrl: null,
       dataSourceId: null,
-      fieldMapping: null,
-      entitlement: null
+      fieldMapping: null
     }
   })
 }
@@ -190,6 +173,27 @@ let settingsWindow: BrowserWindow | null = null
 // Settings 独立窗口尺寸
 const SETTINGS_WINDOW_WIDTH = 360
 const SETTINGS_WINDOW_HEIGHT = 560
+
+async function openNotionUrl(url: unknown): Promise<boolean> {
+  if (!isAllowedNotionUrl(url)) return false
+
+  try {
+    await shell.openExternal(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function configureWindowSecurity(window: BrowserWindow): void {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    void openNotionUrl(url)
+    return { action: 'deny' }
+  })
+
+  // The app has no in-window navigation. Programmatic loadURL/loadFile calls are unaffected.
+  window.webContents.on('will-navigate', (event) => event.preventDefault())
+}
 
 function getDefaultPosition(): { x: number; y: number } {
   const primaryDisplay = screen.getPrimaryDisplay()
@@ -208,9 +212,7 @@ function createWindow(): void {
   const savedBounds = store.get('windowBounds')
   const defaultPos = getDefaultPosition()
 
-  const windowHeight = isCollapsed
-    ? COLLAPSED_HEIGHT
-    : savedBounds?.height ?? EXPANDED_HEIGHT
+  const windowHeight = isCollapsed ? COLLAPSED_HEIGHT : (savedBounds?.height ?? EXPANDED_HEIGHT)
 
   // Create the browser window - 默认 400px 宽，可左右拖拽，最小 400px
   // macOS: 使用系统 vibrancy 实现真正的背景模糊，配合 roundedCorners 避免溢出
@@ -241,11 +243,13 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true, // 安全：上下文隔离
       nodeIntegration: false // 安全：禁用 node 集成
     }
   })
+
+  configureWindowSecurity(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
@@ -273,11 +277,6 @@ function createWindow(): void {
       const bounds = mainWindow.getBounds()
       store.set('windowBounds', bounds)
     }
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
   })
 
   // HMR for renderer base on electron-vite cli
@@ -320,20 +319,20 @@ function openSettingsWindow(tab: 'connection' | 'field-mapping' = 'connection'):
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+
+  configureWindowSecurity(settingsWindow)
 
   const hash = `#settings/${tab}`
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     settingsWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + hash)
   } else {
     // loadFile 不支持 hash，用 loadURL
-    settingsWindow.loadURL(
-      `file://${join(__dirname, '../renderer/index.html')}${hash}`
-    )
+    settingsWindow.loadURL(`file://${join(__dirname, '../renderer/index.html')}${hash}`)
   }
 
   settingsWindow.on('ready-to-show', () => {
@@ -347,38 +346,24 @@ function openSettingsWindow(tab: 'connection' | 'field-mapping' = 'connection'):
   })
 }
 
-/**
- * 解析 Database URL 提取 ID
- */
-function parseDatabaseId(input: string): string | null {
-  if (!input || typeof input !== 'string') return null
-  const trimmed = input.trim()
-  const removeHyphens = (id: string): string => id.replace(/-/g, '')
-  const hexIdRegex = /^[a-f0-9]{32}$/i
-  const uuidRegex = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
-
-  if (hexIdRegex.test(trimmed)) return trimmed.toLowerCase()
-  if (uuidRegex.test(trimmed)) return removeHyphens(trimmed).toLowerCase()
-
-  try {
-    if (trimmed.startsWith('http')) {
-      const url = new URL(trimmed)
-      const pathParts = url.pathname.split('/').filter(Boolean)
-      for (const part of pathParts) {
-        const cleaned = removeHyphens(part)
-        if (hexIdRegex.test(cleaned)) return cleaned.toLowerCase()
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return null
-}
-
 // IPC Handlers
 function setupIPC(): void {
+  function secureHandle<TArgs extends unknown[], TResult>(
+    channel: string,
+    listener: (event: IpcMainInvokeEvent, ...args: TArgs) => TResult
+  ): void {
+    ipcMain.handle(channel, (event, ...args) => {
+      const senderWindow = BrowserWindow.fromWebContents(event.sender)
+      if (!senderWindow || (senderWindow !== mainWindow && senderWindow !== settingsWindow)) {
+        throw new Error(`Blocked IPC sender for ${channel}`)
+      }
+
+      return listener(event, ...(args as TArgs))
+    })
+  }
+
   // 获取窗口状态
-  ipcMain.handle('window:getState', () => {
+  secureHandle('window:getState', () => {
     return {
       isCollapsed: store.get('isCollapsed'),
       bounds: store.get('windowBounds')
@@ -386,14 +371,20 @@ function setupIPC(): void {
   })
 
   // 设置窗口状态
-  ipcMain.handle('window:setState', (_event, state: { isCollapsed?: boolean }) => {
-    if (state.isCollapsed !== undefined) {
+  secureHandle('window:setState', (_event, state: unknown) => {
+    if (
+      !isRecord(state) ||
+      (state.isCollapsed !== undefined && typeof state.isCollapsed !== 'boolean')
+    ) {
+      throw new Error('Invalid window state')
+    }
+    if (typeof state.isCollapsed === 'boolean') {
       store.set('isCollapsed', state.isCollapsed)
     }
   })
 
   // 切换收起/展开 - 丝滑动画
-  ipcMain.handle('window:toggleCollapsed', () => {
+  secureHandle('window:toggleCollapsed', () => {
     if (!mainWindow) return false
 
     const isCollapsed = store.get('isCollapsed')
@@ -421,36 +412,36 @@ function setupIPC(): void {
   })
 
   // 关闭窗口
-  ipcMain.handle('window:close', () => {
+  secureHandle('window:close', () => {
     mainWindow?.close()
   })
 
   // 打开 Settings 独立窗口（不卡在主窗口内）
-  ipcMain.handle(
-    'window:openSettings',
-    (_event, tab?: 'connection' | 'field-mapping') => {
-      openSettingsWindow(tab ?? 'connection')
+  secureHandle('window:openSettings', (_event, tab?: unknown) => {
+    if (tab !== undefined && tab !== 'connection' && tab !== 'field-mapping') {
+      throw new Error('Invalid settings tab')
     }
-  )
+    openSettingsWindow(tab === 'field-mapping' ? tab : 'connection')
+  })
 
   // 关闭当前窗口（Settings 窗口调用）
-  ipcMain.handle('window:closeCurrent', (event) => {
+  secureHandle('window:closeCurrent', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     win?.close()
   })
 
   // 最小化窗口
-  ipcMain.handle('window:minimize', () => {
+  secureHandle('window:minimize', () => {
     mainWindow?.minimize()
   })
 
   // 调整窗口大小（供 renderer 拖拽手柄调用）
-  ipcMain.handle('window:resize', (_event, width: number, height: number) => {
+  secureHandle('window:resize', (_event, width: unknown, height: unknown) => {
     if (!mainWindow) return
+    const size = normalizeWindowSize(width, height, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+    if (!size) throw new Error('Invalid window size')
     const bounds = mainWindow.getBounds()
-    const w = Math.max(WINDOW_MIN_WIDTH, Math.round(width))
-    const h = Math.max(WINDOW_MIN_HEIGHT, Math.round(height))
-    mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: w, height: h })
+    mainWindow.setBounds({ x: bounds.x, y: bounds.y, ...size })
     store.set('windowBounds', mainWindow.getBounds())
   })
 
@@ -459,26 +450,11 @@ function setupIPC(): void {
   /**
    * 安全打开外部链接（仅允许 notion.so 域名）
    */
-  ipcMain.handle('shell:openExternal', (_event, url: string) => {
-    // 验证 URL 是否为 Notion 链接
-    try {
-      const parsedUrl = new URL(url)
-      const isNotionUrl =
-        parsedUrl.hostname === 'notion.so' ||
-        parsedUrl.hostname === 'www.notion.so' ||
-        parsedUrl.hostname.endsWith('.notion.so')
-
-      if (isNotionUrl && parsedUrl.protocol === 'https:') {
-        shell.openExternal(url)
-        return { success: true }
-      } else {
-        console.warn('Blocked non-Notion URL:', url)
-        return { success: false, error: 'Only Notion URLs are allowed' }
-      }
-    } catch (err) {
-      console.error('Invalid URL:', url, err)
-      return { success: false, error: 'Invalid URL' }
-    }
+  secureHandle('shell:openExternal', async (_event, url: unknown) => {
+    const success = await openNotionUrl(url)
+    return success
+      ? { success: true }
+      : { success: false, error: 'Only secure Notion URLs are allowed' }
   })
 
   // ========== Settings IPC ==========
@@ -488,38 +464,42 @@ function setupIPC(): void {
    * - token 使用 safeStorage 加密后存储
    * - databaseUrl 解析出 databaseId
    */
-  ipcMain.handle(
-    'settings:save',
-    (
-      _event,
-      data: { token: string; databaseUrl: string; databaseId: string }
-    ): { success: boolean; error?: string } => {
-      try {
-        // 加密 token
-        if (data.token && safeStorage.isEncryptionAvailable()) {
-          const encrypted = safeStorage.encryptString(data.token)
-          store.set('encryptedToken', encrypted.toString('base64'))
-        } else if (data.token) {
-          // 如果 safeStorage 不可用，仍然存储（开发环境可能出现）
-          store.set('encryptedToken', Buffer.from(data.token).toString('base64'))
-        }
-
-        // 存储 database 信息
-        store.set('databaseId', data.databaseId)
-        store.set('databaseUrl', data.databaseUrl)
-
-        return { success: true }
-      } catch (error) {
-        return { success: false, error: String(error) }
+  secureHandle('settings:save', (_event, data: unknown): { success: boolean; error?: string } => {
+    try {
+      if (
+        !isRecord(data) ||
+        !isValidNotionToken(data.token) ||
+        typeof data.databaseUrl !== 'string'
+      ) {
+        return { success: false, error: 'Invalid settings' }
       }
+      const databaseId = parseDatabaseId(data.databaseUrl)
+      if (!databaseId || (data.databaseId !== undefined && data.databaseId !== databaseId)) {
+        return { success: false, error: 'Invalid Notion database' }
+      }
+      if (!safeStorage.isEncryptionAvailable()) {
+        return { success: false, error: 'Secure token storage is unavailable' }
+      }
+
+      // 加密 token
+      const encrypted = safeStorage.encryptString(data.token)
+      store.set('encryptedToken', encrypted.toString('base64'))
+
+      // 存储 database 信息
+      store.set('databaseId', databaseId)
+      store.set('databaseUrl', data.databaseUrl)
+
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
     }
-  )
+  })
 
   /**
    * 加载设置
    * - 不返回 token 明文，只返回 isTokenConfigured
    */
-  ipcMain.handle(
+  secureHandle(
     'settings:load',
     (): {
       isTokenConfigured: boolean
@@ -542,13 +522,13 @@ function setupIPC(): void {
   /**
    * 保存字段映射
    */
-  ipcMain.handle(
+  secureHandle(
     'settings:saveFieldMapping',
-    (
-      _event,
-      mapping: FieldMapping
-    ): { success: boolean; error?: string } => {
+    (_event, mapping: unknown): { success: boolean; error?: string } => {
       try {
+        if (!isValidFieldMapping(mapping)) {
+          return { success: false, error: 'Invalid field mapping' }
+        }
         // 绑定当前 dataSourceId
         const dataSourceId = store.get('dataSourceId')
         const boundMapping: FieldMapping = {
@@ -566,7 +546,7 @@ function setupIPC(): void {
   /**
    * 清除设置
    */
-  ipcMain.handle('settings:clear', (): { success: boolean } => {
+  secureHandle('settings:clear', (): { success: boolean } => {
     store.set('encryptedToken', null)
     store.set('databaseId', null)
     store.set('databaseUrl', null)
@@ -583,54 +563,13 @@ function setupIPC(): void {
     if (!encryptedToken) return null
 
     try {
-      if (safeStorage.isEncryptionAvailable()) {
-        const buffer = Buffer.from(encryptedToken, 'base64')
-        return safeStorage.decryptString(buffer)
-      } else {
-        // fallback for dev environment
-        return Buffer.from(encryptedToken, 'base64').toString('utf-8')
-      }
+      if (!safeStorage.isEncryptionAvailable()) return null
+      const buffer = Buffer.from(encryptedToken, 'base64')
+      return safeStorage.decryptString(buffer)
     } catch {
       return null
     }
   }
-
-  // ========== Billing IPC ==========
-
-  /**
-   * 获取当前订阅权限
-   */
-  ipcMain.handle('billing:getEntitlement', (): Entitlement => {
-    const entitlement = store.get('entitlement')
-    return entitlement ?? DEFAULT_ENTITLEMENT
-  })
-
-  /**
-   * 设置订阅权限 (仅用于模拟购买)
-   */
-  ipcMain.handle(
-    'billing:setEntitlement',
-    (_event, entitlement: Entitlement): { success: boolean } => {
-      store.set('entitlement', entitlement)
-      return { success: true }
-    }
-  )
-
-  /**
-   * 重置为免费计划
-   */
-  ipcMain.handle('billing:resetEntitlement', (): { success: boolean } => {
-    store.set('entitlement', DEFAULT_ENTITLEMENT)
-    return { success: true }
-  })
-
-  /**
-   * 检查是否可以编辑
-   */
-  ipcMain.handle('billing:canEdit', (): boolean => {
-    const entitlement = store.get('entitlement') ?? DEFAULT_ENTITLEMENT
-    return canEdit(entitlement)
-  })
 
   // ========== Notion IPC ==========
 
@@ -638,11 +577,11 @@ function setupIPC(): void {
    * 测试连接（Save & Verify）
    * 验证 token 和 databaseUrl，获取 dataSourceId 和属性数量
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:testConnection',
     async (
       _event,
-      data: { token: string; databaseUrl: string }
+      data: unknown
     ): Promise<{
       success: boolean
       databaseId?: string
@@ -650,6 +589,21 @@ function setupIPC(): void {
       propertyCount?: number
       error?: NotionError
     }> => {
+      if (
+        !isRecord(data) ||
+        !isValidNotionToken(data.token) ||
+        typeof data.databaseUrl !== 'string'
+      ) {
+        return {
+          success: false,
+          error: {
+            code: 'invalid_settings',
+            message: 'Invalid connection settings',
+            userMessage: 'Enter a valid Notion token and database URL'
+          }
+        }
+      }
+
       // 解析 databaseId
       const databaseId = parseDatabaseId(data.databaseUrl)
       if (!databaseId) {
@@ -683,19 +637,28 @@ function setupIPC(): void {
         }
 
         // 保存配置
-        if (safeStorage.isEncryptionAvailable()) {
-          const encrypted = safeStorage.encryptString(data.token)
-          store.set('encryptedToken', encrypted.toString('base64'))
-        } else {
-          store.set('encryptedToken', Buffer.from(data.token).toString('base64'))
+        if (!safeStorage.isEncryptionAvailable()) {
+          return {
+            success: false,
+            error: {
+              code: 'secure_storage_unavailable',
+              message: 'Secure token storage is unavailable',
+              userMessage: 'macOS secure storage is unavailable; the token was not saved'
+            }
+          }
         }
+        const encrypted = safeStorage.encryptString(data.token)
+        store.set('encryptedToken', encrypted.toString('base64'))
         store.set('databaseId', databaseId)
         store.set('databaseUrl', data.databaseUrl)
         store.set('dataSourceId', result.defaultDataSourceId)
 
         // 检查现有映射是否需要失效
         const existingMapping = store.get('fieldMapping')
-        if (existingMapping?.boundDataSourceId && existingMapping.boundDataSourceId !== result.defaultDataSourceId) {
+        if (
+          existingMapping?.boundDataSourceId &&
+          existingMapping.boundDataSourceId !== result.defaultDataSourceId
+        ) {
           // DataSource 变化，清空映射
           store.set('fieldMapping', null)
         }
@@ -723,7 +686,7 @@ function setupIPC(): void {
    * 获取 Schema（用于字段映射）
    * 使用 dataSources.retrieve 获取 schema.properties
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:getSchema',
     async (): Promise<{
       success: boolean
@@ -801,13 +764,13 @@ function setupIPC(): void {
   /**
    * 保存字段映射（通过 notionAPI）
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:saveFieldMapping',
-    (
-      _event,
-      mapping: FieldMapping
-    ): { success: boolean; error?: string } => {
+    (_event, mapping: unknown): { success: boolean; error?: string } => {
       try {
+        if (!isValidFieldMapping(mapping)) {
+          return { success: false, error: 'Invalid field mapping' }
+        }
         const dataSourceId = store.get('dataSourceId')
         const boundMapping: FieldMapping = {
           ...mapping,
@@ -824,7 +787,7 @@ function setupIPC(): void {
   /**
    * 加载字段映射
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:loadFieldMapping',
     (): {
       mapping: FieldMapping | null
@@ -846,11 +809,11 @@ function setupIPC(): void {
    * 查询任务列表
    * 支持 filter、分页、自动发现 dataSourceId
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:queryTasks',
     async (
       _event,
-      options?: { statusFilter?: StatusFilterKey; cursor?: string }
+      options?: unknown
     ): Promise<{
       success: boolean
       tasks?: NotionTask[]
@@ -859,6 +822,17 @@ function setupIPC(): void {
       totalFetched?: number
       error?: NotionError
     }> => {
+      if (!isValidQueryTasksInput(options)) {
+        return {
+          success: false,
+          error: {
+            code: 'invalid_query',
+            message: 'Invalid query options',
+            userMessage: 'Unable to query tasks because the filter is invalid'
+          }
+        }
+      }
+
       const token = getDecryptedToken()
       const databaseId = store.get('databaseId')
 
@@ -937,7 +911,8 @@ function setupIPC(): void {
             error: {
               code: 'mapping_not_configured',
               message: validation.message || 'Mapping not configured',
-              userMessage: 'Please configure Text / Status / Time mapping in Settings → Field Mapping'
+              userMessage:
+                'Please configure Text / Status / Time mapping in Settings → Field Mapping'
             }
           }
         }
@@ -966,7 +941,7 @@ function setupIPC(): void {
   /**
    * 获取 Database 信息（用于验证配置）
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:getDatabaseInfo',
     async (): Promise<{
       success: boolean
@@ -1025,7 +1000,7 @@ function setupIPC(): void {
    * 获取 Database Schema（兼容旧 API）
    * 使用 dataSources.retrieve 获取 schema.properties
    */
-  ipcMain.handle(
+  secureHandle(
     'notion:getDatabaseSchema',
     async (): Promise<{
       success: boolean
@@ -1104,122 +1079,110 @@ function setupIPC(): void {
   /**
    * 更新任务（Title/Status/Due）
    * 支持节流合并和 429 重试
-   * 🔒 需要付费权限
    */
-  ipcMain.handle(
-    'notion:updateTask',
-    async (
-      _event,
-      options: {
-        pageId: string
-        updates: PropertyUpdate[]
-      }
-    ): Promise<UpdateTaskResult> => {
-      // 🔒 权限校验 - 必须是付费用户才能编辑
-      const entitlement = store.get('entitlement') ?? DEFAULT_ENTITLEMENT
-      if (!canEdit(entitlement)) {
-        return {
-          success: false,
-          error: {
-            code: 'PAYWALL_LOCKED',
-            message: 'Editing requires a paid subscription',
-            userMessage: 'Editing requires a paid subscription, please upgrade your plan'
-          }
-        }
-      }
-
-      const token = getDecryptedToken()
-      let fieldMapping = store.get('fieldMapping')
-
-      if (!token) {
-        return {
-          success: false,
-          error: {
-            code: 'no_token',
-            message: 'Token not configured',
-            userMessage: 'Please configure Notion Token in settings first'
-          }
-        }
-      }
-
-      const databaseId = store.get('databaseId')
-      if (!databaseId) {
-        return {
-          success: false,
-          error: {
-            code: 'no_database',
-            message: 'Database not configured',
-            userMessage: 'Please configure Database URL in settings first'
-          }
-        }
-      }
-
-      // 若未配置字段映射，尝试自动检测并保存
-      if (!fieldMapping) {
-        try {
-          const service = getNotionService(token)
-          const dbResult = await service.getDatabaseAndDataSources(databaseId)
-          if (dbResult.success && dbResult.properties?.length) {
-            const dataSourceId = store.get('dataSourceId')
-            fieldMapping = autoDetectFieldMapping(dbResult.properties, dataSourceId)
-            store.set('fieldMapping', fieldMapping)
-          }
-        } catch {
-          // 忽略自动检测失败
-        }
-      }
-
-      if (!fieldMapping) {
-        return {
-          success: false,
-          error: {
-            code: 'no_field_mapping',
-            message: 'Field mapping not configured',
-            userMessage: 'Please configure field mapping in Settings → Field Mapping'
-          }
-        }
-      }
-
-      try {
-        const service = getNotionService(token)
-
-        // 获取属性类型映射（用于判断 status 是 status 还是 select）
-        let propertyTypes: Record<string, string> = {}
-        const dataSourceId = store.get('dataSourceId')
-        if (dataSourceId) {
-          const schemaResult = await service.getDataSourceSchema(dataSourceId)
-          if (schemaResult.success && schemaResult.properties) {
-            for (const prop of schemaResult.properties) {
-              propertyTypes[prop.id] = prop.type
-            }
-          }
-        }
-
-        const result = await service.updateTask({
-          pageId: options.pageId,
-          updates: options.updates,
-          fieldMapping,
-          propertyTypes
-        })
-
-        return result
-      } catch (error) {
-        return {
-          success: false,
-          error: {
-            code: 'unknown',
-            message: String(error),
-            userMessage: 'Error updating task: ' + String(error)
-          }
+  secureHandle('notion:updateTask', async (_event, options: unknown): Promise<UpdateTaskResult> => {
+    if (!isValidUpdateTaskInput(options)) {
+      return {
+        success: false,
+        error: {
+          code: 'invalid_update',
+          message: 'Invalid task update',
+          userMessage: 'Unable to update this task because the change is invalid'
         }
       }
     }
-  )
+
+    const token = getDecryptedToken()
+    let fieldMapping = store.get('fieldMapping')
+
+    if (!token) {
+      return {
+        success: false,
+        error: {
+          code: 'no_token',
+          message: 'Token not configured',
+          userMessage: 'Please configure Notion Token in settings first'
+        }
+      }
+    }
+
+    const databaseId = store.get('databaseId')
+    if (!databaseId) {
+      return {
+        success: false,
+        error: {
+          code: 'no_database',
+          message: 'Database not configured',
+          userMessage: 'Please configure Database URL in settings first'
+        }
+      }
+    }
+
+    // 若未配置字段映射，尝试自动检测并保存
+    if (!fieldMapping) {
+      try {
+        const service = getNotionService(token)
+        const dbResult = await service.getDatabaseAndDataSources(databaseId)
+        if (dbResult.success && dbResult.properties?.length) {
+          const dataSourceId = store.get('dataSourceId')
+          fieldMapping = autoDetectFieldMapping(dbResult.properties, dataSourceId)
+          store.set('fieldMapping', fieldMapping)
+        }
+      } catch {
+        // 忽略自动检测失败
+      }
+    }
+
+    if (!fieldMapping) {
+      return {
+        success: false,
+        error: {
+          code: 'no_field_mapping',
+          message: 'Field mapping not configured',
+          userMessage: 'Please configure field mapping in Settings → Field Mapping'
+        }
+      }
+    }
+
+    try {
+      const service = getNotionService(token)
+
+      // 获取属性类型映射（用于判断 status 是 status 还是 select）
+      const propertyTypes: Record<string, string> = {}
+      const dataSourceId = store.get('dataSourceId')
+      if (dataSourceId) {
+        const schemaResult = await service.getDataSourceSchema(dataSourceId)
+        if (schemaResult.success && schemaResult.properties) {
+          for (const prop of schemaResult.properties) {
+            propertyTypes[prop.id] = prop.type
+          }
+        }
+      }
+
+      const result = await service.updateTask({
+        pageId: options.pageId,
+        updates: options.updates,
+        fieldMapping,
+        propertyTypes
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'unknown',
+          message: String(error),
+          userMessage: 'Error updating task: ' + String(error)
+        }
+      }
+    }
+  })
 
   /**
    * 清除 Notion service 缓存（设置更改时调用）
    */
-  ipcMain.handle('notion:clearCache', () => {
+  secureHandle('notion:clearCache', () => {
     clearNotionServiceCache()
     // 清除 dataSourceId，下次查询时重新获取
     store.set('dataSourceId', null)
@@ -1233,7 +1196,7 @@ app.whenReady().then(async () => {
   await initStore()
 
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.notion-pin')
+  electronApp.setAppUserModelId('com.crazzzzhao.notionpin')
 
   // Default open or close DevTools by F12 in development
   app.on('browser-window-created', (_, window) => {

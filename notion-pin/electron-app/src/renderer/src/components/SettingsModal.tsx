@@ -2,35 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
-import { X, ChevronDown, AlertCircle, CheckCircle, Eye, EyeOff, Copy, Check, Unlink, Type, Loader, Calendar } from 'lucide-react'
+import {
+  X,
+  ChevronDown,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Unlink,
+  Type,
+  Loader,
+  Calendar
+} from 'lucide-react'
 import type { FieldMapping, PropertySchema } from '../../../preload'
-
-// ========== Database URL 解析 ==========
-
-export function parseDatabaseId(input: string): string | null {
-  if (!input || typeof input !== 'string') return null
-  const trimmed = input.trim()
-  const removeHyphens = (id: string): string => id.replace(/-/g, '')
-  const hexIdRegex = /^[a-f0-9]{32}$/i
-  const uuidRegex = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
-
-  if (hexIdRegex.test(trimmed)) return trimmed.toLowerCase()
-  if (uuidRegex.test(trimmed)) return removeHyphens(trimmed).toLowerCase()
-
-  try {
-    if (trimmed.startsWith('http')) {
-      const url = new URL(trimmed)
-      const pathParts = url.pathname.split('/').filter(Boolean)
-      for (const part of pathParts) {
-        const cleaned = removeHyphens(part)
-        if (hexIdRegex.test(cleaned)) return cleaned.toLowerCase()
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return null
-}
+import { parseDatabaseId } from '../../../shared/validation'
 
 // ========== Zod Schema ==========
 
@@ -71,9 +57,7 @@ function FieldSelect({
   return (
     <div className="space-y-1.5">
       <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-        <span className="w-4 h-4 flex items-center justify-center shrink-0">
-          {icon}
-        </span>
+        <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>
         {label}
       </label>
       <div className="relative">
@@ -135,12 +119,12 @@ export function SettingsModal({
   )
   const [isSaving, setIsSaving] = useState(false)
   const [parsedId, setParsedId] = useState<string | null>(null)
-  
+
   // Token 可见性和复制状态
   const [isTokenVisible, setIsTokenVisible] = useState(false)
   const [isTokenCopied, setIsTokenCopied] = useState(false)
   const [isTokenHovered, setIsTokenHovered] = useState(false)
-  
+
   // Disconnect 确认对话框状态
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
@@ -254,21 +238,21 @@ export function SettingsModal({
   // Connection: Save
   const handleVerify = async (): Promise<void> => {
     setErrors({})
-    
+
     // 如果 token 为空，视为断开连接操作（允许用户清空配置）
     const isDisconnecting = !token.trim()
-    
+
     if (isDisconnecting) {
-      // 断开连接：保存空配置并关闭
+      // 断开连接：清除本地配置并关闭
       setIsSaving(true)
       try {
-        const response = await window.notionAPI.testConnection({ token: '', databaseUrl: '' })
+        const response = await window.settingsAPI.clear()
         if (response.success) {
           setDataSourceId(null)
           onSaved()
           onClose()
         } else {
-          setErrors({ general: response.error?.userMessage || 'Save failed' })
+          setErrors({ general: 'Unable to clear settings' })
         }
       } catch (error) {
         setErrors({ general: String(error) })
@@ -353,352 +337,336 @@ export function SettingsModal({
         standalone ? 'w-full h-full' : 'w-[290px] max-w-[calc(100%-32px)] mx-4'
       }`}
       style={{
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(50px)',
-          WebkitBackdropFilter: 'blur(50px)',
-          border: '0.5px solid rgba(255, 255, 255, 0.5)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)'
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(50px)',
+        WebkitBackdropFilter: 'blur(50px)',
+        border: '0.5px solid rgba(255, 255, 255, 0.5)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)'
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {/* Header - 设计稿: padding [18,20], border-bottom 1px, shadow */}
+      <div
+        className="flex items-center justify-between px-5 py-[18px] shrink-0 relative z-10 border-b border-border"
+        style={{
+          boxShadow: '0 1px 4px -1px rgba(0, 0, 0, 0.06)'
         }}
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* Header - 设计稿: padding [18,20], border-bottom 1px, shadow */}
-        <div
-          className="flex items-center justify-between px-5 py-[18px] shrink-0 relative z-10 border-b border-border"
-          style={{ 
-            boxShadow: '0 1px 4px -1px rgba(0, 0, 0, 0.06)'
-          }}
+        <h2 className="text-[15px] font-semibold text-foreground">Settings</h2>
+        <button
+          onClick={handleCancel}
+          className="w-[28px] h-[28px] rounded-lg flex items-center justify-center hover:opacity-80 transition-opacity"
+          style={{ background: 'rgba(255,255,255,0.25)' }}
+          aria-label="Close"
         >
-          <h2 className="text-[15px] font-semibold text-foreground">Settings</h2>
-          <button
-            onClick={handleCancel}
-            className="w-[28px] h-[28px] rounded-lg flex items-center justify-center hover:opacity-80 transition-opacity"
-            style={{ background: 'rgba(255,255,255,0.25)' }}
-            aria-label="Close"
-          >
-            <X className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-        </div>
+          <X className="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+      </div>
 
-        {/* Tabs: Connection | Field Mapping */}
-        <div className="px-4 pt-3 pb-2">
-          <AnimatedTabs
-            tabs={tabs}
-            activeValue={activeTab}
-            onTabChange={(v) => setActiveTab(v as TabValue)}
-          />
-        </div>
+      {/* Tabs: Connection | Field Mapping */}
+      <div className="px-4 pt-3 pb-2">
+        <AnimatedTabs
+          tabs={tabs}
+          activeValue={activeTab}
+          onTabChange={(v) => setActiveTab(v as TabValue)}
+        />
+      </div>
 
-        {/* Tab Content - 设计稿: padding [20, 16, 12, 20], gap 20 */}
-        <div 
-          className={`space-y-5 flex-1 min-h-0 ${standalone ? 'overflow-y-auto' : ''}`}
-          style={{ padding: '20px 16px 12px 20px' }}
-        >
-          {errors.general && (
-            <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
-              {errors.general}
-            </div>
-          )}
+      {/* Tab Content - 设计稿: padding [20, 16, 12, 20], gap 20 */}
+      <div
+        className={`space-y-5 flex-1 min-h-0 ${standalone ? 'overflow-y-auto' : ''}`}
+        style={{ padding: '20px 16px 12px 20px' }}
+      >
+        {errors.general && (
+          <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
+            {errors.general}
+          </div>
+        )}
 
-          {activeTab === 'connection' && (
-            <>
-              <div className="space-y-2">
-                <label htmlFor="notion-token" className="text-xs font-medium text-muted-foreground">
-                  Notion Token
-                </label>
-                <div 
-                  className="relative"
-                  onMouseEnter={() => setIsTokenHovered(true)}
-                  onMouseLeave={() => setIsTokenHovered(false)}
-                >
-                  <input
-                    id="notion-token"
-                    type={isTokenVisible ? 'text' : 'password'}
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder="secret_xxx or ntn_xxx"
-                    autoComplete="off"
-                    className="w-full h-10 px-3.5 pr-20 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
-                    style={{
-                      background: 'rgba(255,255,255,0.25)',
-                      border: '0.5px solid rgba(255,255,255,0.5)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-                    }}
-                  />
-                  {/* Icons Wrapper - 设计稿: gap 4 */}
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    {/* 复制按钮 - hover 时显示 */}
-                    {token && isTokenHovered && (
-                      <button
-                        type="button"
-                        onClick={handleCopyToken}
-                        className="p-1 rounded hover:bg-black/5 transition-colors"
-                        title={isTokenCopied ? 'Token copied' : 'Copy token'}
-                      >
-                        {isTokenCopied ? (
-                          <Check className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <Copy className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </button>
-                    )}
-                    {/* 眼睛图标 - 始终显示 */}
-                    <button
-                      type="button"
-                      onClick={() => setIsTokenVisible(!isTokenVisible)}
-                      className="p-1 rounded hover:bg-black/5 transition-colors"
-                      title={isTokenVisible ? 'Hide token' : 'Show token'}
-                    >
-                      {isTokenVisible ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                {errors.token && <p className="text-xs text-destructive">{errors.token}</p>}
-                <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
-                  Internal Integration Token
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">Database URL</label>
+        {activeTab === 'connection' && (
+          <>
+            <div className="space-y-2">
+              <label htmlFor="notion-token" className="text-xs font-medium text-muted-foreground">
+                Notion Token
+              </label>
+              <div
+                className="relative"
+                onMouseEnter={() => setIsTokenHovered(true)}
+                onMouseLeave={() => setIsTokenHovered(false)}
+              >
                 <input
-                  type="text"
-                  value={databaseUrl}
-                  onChange={(e) => setDatabaseUrl(e.target.value)}
-                  placeholder="https://notion.so/..."
-                  className="w-full h-10 px-3.5 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
+                  id="notion-token"
+                  type={isTokenVisible ? 'text' : 'password'}
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="secret_xxx or ntn_xxx"
+                  autoComplete="off"
+                  className="w-full h-10 px-3.5 pr-20 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
                   style={{
                     background: 'rgba(255,255,255,0.25)',
                     border: '0.5px solid rgba(255,255,255,0.5)',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                   }}
                 />
-                {errors.databaseUrl && (
-                  <p className="text-xs text-destructive">{errors.databaseUrl}</p>
-                )}
-                <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
-                  Paste Notion Database link
-                </p>
-                {databaseUrl && (
-                  <div className="text-xs">
-                    {parsedId ? (
-                      <div className="flex items-center gap-1">
+                {/* Icons Wrapper - 设计稿: gap 4 */}
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {/* 复制按钮 - hover 时显示 */}
+                  {token && isTokenHovered && (
+                    <button
+                      type="button"
+                      onClick={handleCopyToken}
+                      className="p-1 rounded hover:bg-black/5 transition-colors"
+                      title={isTokenCopied ? 'Token copied' : 'Copy token'}
+                    >
+                      {isTokenCopied ? (
                         <Check className="h-4 w-4 text-green-600" />
-                        <span className="text-green-600">
-                          Database ID: {parsedId.slice(0, 8)}...
-                        </span>
-                      </div>
+                      ) : (
+                        <Copy className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                  )}
+                  {/* 眼睛图标 - 始终显示 */}
+                  <button
+                    type="button"
+                    onClick={() => setIsTokenVisible(!isTokenVisible)}
+                    className="p-1 rounded hover:bg-black/5 transition-colors"
+                    title={isTokenVisible ? 'Hide token' : 'Show token'}
+                  >
+                    {isTokenVisible ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <span className="text-amber-600">⚠ Cannot parse Database ID</span>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
                     )}
-                  </div>
-                )}
+                  </button>
+                </div>
               </div>
-            </>
-          )}
-
-          {activeTab === 'field-mapping' && (
-            <div className="space-y-4">
-              {!dataSourceId ? (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
-                  <p className="text-xs text-amber-700">
-                    Save & Verify in Connection first
-                  </p>
-                </div>
-              ) : isLoadingSchema ? (
-                <p className="text-xs text-muted-foreground">Loading database schema...</p>
-              ) : schemaError ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-destructive">{schemaError}</p>
-                  <Button variant="outline" size="sm" onClick={loadSchema}>
-                    Retry
-                  </Button>
-                </div>
-              ) : schema.length > 0 ? (
-                <>
-                  <FieldSelect
-                    label="Text"
-                    icon={<Type className="h-4 w-4 shrink-0" />}
-                    value={fieldMapping.textPropertyId}
-                    options={schema}
-                    filterTypes={['title', 'rich_text']}
-                    typeLabel="Text"
-                    onChange={(v) =>
-                      setFieldMapping((prev) => ({ ...prev, textPropertyId: v }))
-                    }
-                  />
-                  <FieldSelect
-                    label="Status"
-                    icon={<Loader className="h-4 w-4 shrink-0" />}
-                    value={fieldMapping.statusPropertyId}
-                    options={schema}
-                    filterTypes={['status']}
-                    typeLabel="Status"
-                    onChange={(v) =>
-                      setFieldMapping((prev) => ({ ...prev, statusPropertyId: v }))
-                    }
-                  />
-                  <FieldSelect
-                    label="Date"
-                    icon={<Calendar className="h-4 w-4 shrink-0" />}
-                    value={fieldMapping.timePropertyId}
-                    options={schema}
-                    filterTypes={['date']}
-                    typeLabel="Date"
-                    onChange={(v) =>
-                      setFieldMapping((prev) => ({ ...prev, timePropertyId: v }))
-                    }
-                  />
-                </>
-              ) : null}
-            </div>
-          )}
-
-        </div>
-
-        {/* Disconnect Notion - 设计稿: padding [0, 16, 0, 20], gap 4, 独立块 */}
-        {activeTab === 'connection' && initialDataSourceId && (
-          <div 
-            className="flex items-center gap-1"
-            style={{ padding: '0 16px 0 20px' }}
-          >
-            <Unlink className="h-4 w-4 text-destructive" />
-            <button
-              type="button"
-              onClick={() => setShowDisconnectConfirm(true)}
-              className="text-xs text-destructive hover:text-destructive/80 transition-colors"
-            >
-              Disconnect your Notion
-            </button>
-          </div>
-        )}
-
-        {/* Footer - 设计稿: padding [16,20], gap 10, stroke top 0.5px */}
-        <div
-          className="flex justify-end gap-2.5 px-5 py-4 shrink-0"
-          style={{ 
-            borderTop: '0.5px solid rgba(255, 255, 255, 0.5)'
-          }}
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 px-[18px] rounded-lg text-[13px] font-medium"
-            style={{
-              background: 'rgba(255,255,255,0.25)',
-              border: '0.5px solid rgba(255,255,255,0.5)'
-            }}
-            onClick={handleCancel}
-          >
-            Cancel
-          </Button>
-          {activeTab === 'connection' && (
-            <Button
-              size="sm"
-              className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
-              style={{
-                background: '#007AFF',
-                boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
-              }}
-              onClick={handleVerify}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          )}
-          {activeTab === 'field-mapping' && (
-            <Button
-              size="sm"
-              className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
-              style={{
-                background: '#007AFF',
-                boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
-              }}
-              onClick={handleSaveMapping}
-              disabled={isSaving || schema.length === 0}
-            >
-              {isSaving ? 'Saving...' : 'Save Mapping'}
-            </Button>
-          )}
-        </div>
-
-        {/* Token Copied Toast */}
-        {isTokenCopied && (
-          <div
-            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2"
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              background: '#ffffff',
-              border: '1px solid #e5e5e5',
-              boxShadow: '0 4px 12px -1px rgba(0,0,0,0.1)'
-            }}
-          >
-            <Check className="h-4 w-4 text-green-600" />
-            <span className="text-xs text-muted-foreground">Token copied</span>
-          </div>
-        )}
-
-        {/* Disconnect 确认对话框 */}
-        {showDisconnectConfirm && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center">
-            {/* 遮罩 */}
-            <div
-              className="absolute inset-0 bg-black/20 animate-in fade-in-0 duration-150"
-              onClick={() => setShowDisconnectConfirm(false)}
-            />
-            {/* 对话框 */}
-            <div
-              className="relative z-10 w-[250px] rounded-xl p-5 animate-in fade-in-0 zoom-in-95 duration-150"
-              style={{
-                background: 'rgba(255, 255, 255, 0.98)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
-              }}
-            >
-              <h3 className="text-[15px] font-semibold text-foreground mb-2">
-                Disconnect Notion?
-              </h3>
-              <p className="text-[13px] text-muted-foreground mb-5">
-                Your token and database will be removed. You can reconnect anytime.
+              {errors.token && <p className="text-xs text-destructive">{errors.token}</p>}
+              <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
+                Internal Integration Token
               </p>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 rounded-lg text-[13px] font-medium"
-                  style={{
-                    background: 'rgba(255,255,255,0.5)',
-                    border: '0.5px solid rgba(0,0,0,0.1)'
-                  }}
-                  onClick={() => setShowDisconnectConfirm(false)}
-                  disabled={isDisconnecting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-8 px-3 rounded-lg text-[13px] font-medium text-white"
-                  style={{
-                    background: '#d44c47',
-                    boxShadow: '0 1px 3px rgba(212,76,71,0.3)'
-                  }}
-                  onClick={handleDisconnect}
-                  disabled={isDisconnecting}
-                >
-                  {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Database URL</label>
+              <input
+                type="text"
+                value={databaseUrl}
+                onChange={(e) => setDatabaseUrl(e.target.value)}
+                placeholder="https://notion.so/..."
+                className="w-full h-10 px-3.5 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
+                style={{
+                  background: 'rgba(255,255,255,0.25)',
+                  border: '0.5px solid rgba(255,255,255,0.5)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+                }}
+              />
+              {errors.databaseUrl && (
+                <p className="text-xs text-destructive">{errors.databaseUrl}</p>
+              )}
+              <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
+                Paste Notion Database link
+              </p>
+              {databaseUrl && (
+                <div className="text-xs">
+                  {parsedId ? (
+                    <div className="flex items-center gap-1">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-green-600">Database ID: {parsedId.slice(0, 8)}...</span>
+                    </div>
+                  ) : (
+                    <span className="text-amber-600">⚠ Cannot parse Database ID</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'field-mapping' && (
+          <div className="space-y-4">
+            {!dataSourceId ? (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs text-amber-700">Save & Verify in Connection first</p>
+              </div>
+            ) : isLoadingSchema ? (
+              <p className="text-xs text-muted-foreground">Loading database schema...</p>
+            ) : schemaError ? (
+              <div className="space-y-2">
+                <p className="text-xs text-destructive">{schemaError}</p>
+                <Button variant="outline" size="sm" onClick={loadSchema}>
+                  Retry
                 </Button>
               </div>
-            </div>
+            ) : schema.length > 0 ? (
+              <>
+                <FieldSelect
+                  label="Text"
+                  icon={<Type className="h-4 w-4 shrink-0" />}
+                  value={fieldMapping.textPropertyId}
+                  options={schema}
+                  filterTypes={['title', 'rich_text']}
+                  typeLabel="Text"
+                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, textPropertyId: v }))}
+                />
+                <FieldSelect
+                  label="Status"
+                  icon={<Loader className="h-4 w-4 shrink-0" />}
+                  value={fieldMapping.statusPropertyId}
+                  options={schema}
+                  filterTypes={['status']}
+                  typeLabel="Status"
+                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, statusPropertyId: v }))}
+                />
+                <FieldSelect
+                  label="Date"
+                  icon={<Calendar className="h-4 w-4 shrink-0" />}
+                  value={fieldMapping.timePropertyId}
+                  options={schema}
+                  filterTypes={['date']}
+                  typeLabel="Date"
+                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, timePropertyId: v }))}
+                />
+              </>
+            ) : null}
           </div>
         )}
       </div>
+
+      {/* Disconnect Notion - 设计稿: padding [0, 16, 0, 20], gap 4, 独立块 */}
+      {activeTab === 'connection' && initialDataSourceId && (
+        <div className="flex items-center gap-1" style={{ padding: '0 16px 0 20px' }}>
+          <Unlink className="h-4 w-4 text-destructive" />
+          <button
+            type="button"
+            onClick={() => setShowDisconnectConfirm(true)}
+            className="text-xs text-destructive hover:text-destructive/80 transition-colors"
+          >
+            Disconnect your Notion
+          </button>
+        </div>
+      )}
+
+      {/* Footer - 设计稿: padding [16,20], gap 10, stroke top 0.5px */}
+      <div
+        className="flex justify-end gap-2.5 px-5 py-4 shrink-0"
+        style={{
+          borderTop: '0.5px solid rgba(255, 255, 255, 0.5)'
+        }}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 px-[18px] rounded-lg text-[13px] font-medium"
+          style={{
+            background: 'rgba(255,255,255,0.25)',
+            border: '0.5px solid rgba(255,255,255,0.5)'
+          }}
+          onClick={handleCancel}
+        >
+          Cancel
+        </Button>
+        {activeTab === 'connection' && (
+          <Button
+            size="sm"
+            className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
+            style={{
+              background: '#007AFF',
+              boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
+            }}
+            onClick={handleVerify}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
+        )}
+        {activeTab === 'field-mapping' && (
+          <Button
+            size="sm"
+            className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
+            style={{
+              background: '#007AFF',
+              boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
+            }}
+            onClick={handleSaveMapping}
+            disabled={isSaving || schema.length === 0}
+          >
+            {isSaving ? 'Saving...' : 'Save Mapping'}
+          </Button>
+        )}
+      </div>
+
+      {/* Token Copied Toast */}
+      {isTokenCopied && (
+        <div
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2"
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: '#ffffff',
+            border: '1px solid #e5e5e5',
+            boxShadow: '0 4px 12px -1px rgba(0,0,0,0.1)'
+          }}
+        >
+          <Check className="h-4 w-4 text-green-600" />
+          <span className="text-xs text-muted-foreground">Token copied</span>
+        </div>
+      )}
+
+      {/* Disconnect 确认对话框 */}
+      {showDisconnectConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          {/* 遮罩 */}
+          <div
+            className="absolute inset-0 bg-black/20 animate-in fade-in-0 duration-150"
+            onClick={() => setShowDisconnectConfirm(false)}
+          />
+          {/* 对话框 */}
+          <div
+            className="relative z-10 w-[250px] rounded-xl p-5 animate-in fade-in-0 zoom-in-95 duration-150"
+            style={{
+              background: 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+            }}
+          >
+            <h3 className="text-[15px] font-semibold text-foreground mb-2">Disconnect Notion?</h3>
+            <p className="text-[13px] text-muted-foreground mb-5">
+              Your token and database will be removed. You can reconnect anytime.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 rounded-lg text-[13px] font-medium"
+                style={{
+                  background: 'rgba(255,255,255,0.5)',
+                  border: '0.5px solid rgba(0,0,0,0.1)'
+                }}
+                onClick={() => setShowDisconnectConfirm(false)}
+                disabled={isDisconnecting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 px-3 rounded-lg text-[13px] font-medium text-white"
+                style={{
+                  background: '#d44c47',
+                  boxShadow: '0 1px 3px rgba(212,76,71,0.3)'
+                }}
+                onClick={handleDisconnect}
+                disabled={isDisconnecting}
+              >
+                {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 
   if (standalone) {
