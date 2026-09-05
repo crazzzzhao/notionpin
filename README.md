@@ -1,12 +1,14 @@
-# NotionPin
+# Nopin
 
-![NotionPin logo](notion-pin/electron-app/build/icon.png)
+![Nopin logo](notion-pin/electron-app/build/icon.png)
 
 [English](#english) | [中文](#中文)
 
-NotionPin is a small, always-on-top macOS window for viewing and editing tasks stored in a Notion database. It is free and open source, has no account server, and connects directly from the desktop app to the Notion API.
+Nopin is a small, always-on-top macOS window for viewing and editing tasks stored in a Notion database. It is free and open source, has no account server, and connects directly from the desktop app to the Notion API.
 
-> NotionPin is an independent open-source project and is not affiliated with or endorsed by Notion Labs, Inc.
+> Nopin is an independent open-source project and is not affiliated with or endorsed by Notion Labs, Inc.
+
+The app was previously named NotionPin. The GitHub repository URL remains unchanged.
 
 ## English
 
@@ -28,13 +30,13 @@ Open the repository's [Releases](https://github.com/crazzzzhao/notionpin/release
 
 Both builds require macOS 13 Ventura or newer.
 
-The first public builds are unsigned because the project does not yet have an Apple Developer ID certificate. macOS may block the first normal double-click. In Finder, right-click `NotionPin.app`, choose **Open**, then confirm **Open**. If macOS still blocks it, open **System Settings → Privacy & Security** and allow the app there. Do not disable Gatekeeper system-wide.
+The first public builds are unsigned because the project does not yet have an Apple Developer ID certificate. macOS may block the first normal double-click. In Finder, right-click `Nopin.app`, choose **Open**, then confirm **Open**. If macOS still blocks it, open **System Settings → Privacy & Security** and allow the app there. Do not disable Gatekeeper system-wide.
 
 ### Connect a Notion database
 
 1. Create a Notion internal integration and copy its token.
 2. Share the target database with that integration.
-3. Open NotionPin settings and enter the integration token and database URL.
+3. Open Nopin settings and enter the integration token and database URL.
 4. Select the database properties used for task title, status, and due date.
 
 The integration needs read access to display tasks and update access to edit them. Use a dedicated integration with access only to the database you intend to expose.
@@ -42,11 +44,13 @@ The integration needs read access to display tasks and update access to edit the
 ### Privacy and security
 
 - The token is stored outside the repository in the current macOS user's application-data directory.
-- NotionPin refuses to save a token when macOS secure storage is unavailable.
+- Nopin refuses to save a token when macOS secure storage is unavailable.
 - The renderer never receives the saved token in plaintext.
-- Requests go directly to Notion; NotionPin has no intermediary server.
+- Requests go directly to Notion; Nopin has no intermediary server.
 - The application contains no analytics or telemetry.
 - External links are limited to secure Notion domains.
+
+On first launch, Nopin imports an existing NotionPin configuration (or the older `electron-app` configuration) locally, only if no Nopin configuration exists. Encrypted credentials, database settings, and window preferences are preserved; the source configuration is kept.
 
 Never commit a Notion token. If a token is accidentally published, revoke it in Notion immediately and create a replacement.
 
@@ -85,11 +89,13 @@ npm run build:mac:arm64
 npm run build:mac:x64
 ```
 
-The editable app-icon source is `notion-pin/electron-app/build/icon.svg`. On macOS, regenerate the PNG and multi-resolution ICNS files with:
+The editable app-icon source is `notion-pin/electron-app/build/icon.svg`. After `npm ci`, regenerate the PNG and multi-resolution ICNS files on macOS with:
 
 ```bash
 npm run icon:mac
 ```
+
+The generator uses Electron's Chromium renderer to preserve SVG filters, then macOS tools to create the multi-resolution ICNS.
 
 Build output is written to `notion-pin/electron-app/dist/` and is intentionally ignored by Git.
 
@@ -108,7 +114,9 @@ The first release does not implement automatic updates. Users download later ver
 
 ## 中文
 
-NotionPin 是一个轻量、始终置顶的 macOS Notion 任务窗口，可直接查看和编辑 Notion 数据库中的任务。它完全免费并开源，没有自建账号服务器，应用会直接连接 Notion API。
+Nopin 是一个轻量、始终置顶的 macOS Notion 任务窗口，可直接查看和编辑 Notion 数据库中的任务。它完全免费并开源，没有自建账号服务器，应用会直接连接 Notion API。
+
+应用原名为 NotionPin，GitHub 仓库地址保持不变。
 
 ### 功能
 
@@ -128,24 +136,26 @@ NotionPin 是一个轻量、始终置顶的 macOS Notion 任务窗口，可直�
 
 两个版本都需要 macOS 13 Ventura 或更高版本。
 
-首批公开版本没有 Apple Developer ID 签名和公证。如果 macOS 拦截首次打开，请在 Finder 中右键点击 `NotionPin.app`，选择“打开”并再次确认。如果仍被拦截，前往“系统设置 → 隐私与安全性”手动允许。不要在系统范围禁用 Gatekeeper。
+首批公开版本没有 Apple Developer ID 签名和公证。如果 macOS 拦截首次打开，请在 Finder 中右键点击 `Nopin.app`，选择“打开”并再次确认。如果仍被拦截，前往“系统设置 → 隐私与安全性”手动允许。不要在系统范围禁用 Gatekeeper。
 
 ### 连接 Notion
 
 1. 创建 Notion Internal Integration 并复制 token。
 2. 将目标数据库共享给该 Integration。
-3. 在 NotionPin 设置中填入 token 和数据库链接。
+3. 在 Nopin 设置中填入 token 和数据库链接。
 4. 选择任务标题、状态和截止日期对应的 Notion 字段。
 
-建议为 NotionPin 创建专用 Integration，并且只授予它需要访问的数据库权限。
+建议为 Nopin 创建专用 Integration，并且只授予它需要访问的数据库权限。
 
 ### 隐私与安全
 
 - token 保存在仓库外的 macOS 应用数据目录。
 - macOS 安全存储不可用时，应用不会保存 token。
 - 渲染进程不会获得已保存的 token 明文。
-- 请求直接发送到 Notion，不经过 NotionPin 服务器。
+- 请求直接发送到 Notion，不经过 Nopin 服务器。
 - 应用不包含分析或遥测。
+
+首次启动且没有 Nopin 配置时，应用会在本机优先导入旧 NotionPin 配置，其次兼容更早的 `electron-app` 配置。加密凭证、数据库设置和窗口偏好会保留，旧配置文件不会被删除。
 
 不要将 Notion token 提交到 Git。如果 token 被意外公开，请立即在 Notion 中撤销并生成新 token。
 
@@ -166,7 +176,7 @@ npm run build:mac:arm64
 npm run build:mac:x64
 ```
 
-图标可编辑源文件为 `notion-pin/electron-app/build/icon.svg`，在 macOS 上运行 `npm run icon:mac` 可重新生成 PNG 和多尺寸 ICNS 图标。
+图标可编辑源文件为 `notion-pin/electron-app/build/icon.svg`。执行 `npm ci` 后，在 macOS 上运行 `npm run icon:mac` 可重新生成 PNG 和多尺寸 ICNS 图标。生成器使用 Electron 的 Chromium 渲染器保留 SVG 滤镜效果，再调用 macOS 工具生成 ICNS。
 
 ### 已知限制
 

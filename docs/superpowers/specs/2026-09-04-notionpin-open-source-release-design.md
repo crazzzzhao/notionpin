@@ -1,9 +1,11 @@
-# NotionPin Open-Source Release Design
+# Nopin Open-Source Release Design
 
 Date: 2026-09-04  
 Status: Design approved; written specification awaiting user review  
 Repository: `https://github.com/crazzzzhao/notionpin`  
 Target platforms: macOS Apple Silicon (`arm64`) and macOS Intel (`x64`)
+
+Brand update (2026-09-05): the owner selected the product name `Nopin` and supplied a replacement pin SVG. Use the supplied vector paths and effects on the existing rounded white macOS icon background. The GitHub repository and source directory paths remain unchanged.
 
 ## Objective
 
@@ -86,8 +88,8 @@ There is no payment or entitlement branch in this flow.
 
 ## Application Metadata and Repository Hygiene
 
-- Set the product name to `NotionPin`.
-- Set the bundle identifier to `com.crazzzzhao.notionpin`.
+- Set the product name to `Nopin`.
+- Set the bundle identifier to `com.crazzzzhao.nopin`.
 - Replace template author, description, homepage, window title, executable name, and artifact names with project-specific values.
 - Add an MIT `LICENSE` file.
 - Replace the template README with practical English and Chinese documentation covering setup, Notion integration prerequisites, development, testing, building, architecture selection, unsigned-app launch instructions, privacy, and known limitations.
@@ -114,6 +116,7 @@ There is no payment or entitlement branch in this flow.
 Renaming the application can change Electron's user-data directory. The implementation must detect the existing legacy application-data directory and preserve the user's current Notion connection without exposing it.
 
 - Migrate only when the new configuration is absent and a legacy configuration exists.
+- For Nopin, prefer the NotionPin configuration over the older `electron-app` configuration. An existing Nopin configuration always wins, including a disconnected configuration. Preserve the stable legacy Keychain identity for encrypted tokens.
 - Copy or transform configuration entirely on device.
 - Strip the obsolete entitlement field during migration.
 - Do not overwrite a newer configuration.
@@ -156,8 +159,8 @@ For each architecture it must:
 2. Run the same quality gates as CI.
 3. Build an unsigned DMG with automatic signing discovery disabled.
 4. Name artifacts unambiguously:
-   - `NotionPin-<version>-mac-arm64.dmg`
-   - `NotionPin-<version>-mac-x64.dmg`
+   - `Nopin-<version>-mac-arm64.dmg`
+   - `Nopin-<version>-mac-x64.dmg`
 5. Generate a SHA-256 checksum file.
 6. Attach the DMGs and checksum file to the matching GitHub Release using GitHub's ephemeral token.
 
@@ -170,7 +173,7 @@ Run the application with an isolated temporary user-data directory so the user's
 Verify:
 
 - The main window opens without a startup exception or blank screen.
-- Header branding is `NotionPin` and no Pro or billing element is present.
+- Header branding is `Nopin` and no Pro or billing element is present.
 - Expand, collapse, resize, and close controls work.
 - The settings window opens and closes correctly.
 - The disconnected state explains how to configure Notion without crashing.

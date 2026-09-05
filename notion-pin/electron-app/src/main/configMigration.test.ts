@@ -7,7 +7,7 @@ import { prepareLocalConfig, stripObsoleteLocalState } from './configMigration'
 const temporaryDirectories: string[] = []
 
 function makeTemporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'notionpin-config-test-'))
+  const directory = mkdtempSync(join(tmpdir(), 'nopin-config-test-'))
   temporaryDirectories.push(directory)
   return directory
 }
@@ -47,7 +47,7 @@ describe('local configuration migration', () => {
       { mode: 0o644 }
     )
 
-    expect(prepareLocalConfig(legacyPath, currentPath)).toEqual({ status: 'migrated' })
+    expect(prepareLocalConfig([legacyPath], currentPath)).toEqual({ status: 'migrated' })
     expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({
       encryptedToken: 'encrypted-placeholder',
       databaseId: 'database-id',
@@ -64,7 +64,7 @@ describe('local configuration migration', () => {
     writeFileSync(legacyPath, JSON.stringify({ databaseId: 'legacy' }))
     writeFileSync(currentPath, JSON.stringify({ databaseId: 'current' }), { mode: 0o644 })
 
-    expect(prepareLocalConfig(legacyPath, currentPath)).toEqual({ status: 'current-exists' })
+    expect(prepareLocalConfig([legacyPath], currentPath)).toEqual({ status: 'current-exists' })
     expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({ databaseId: 'current' })
     expect(statSync(currentPath).mode & 0o777).toBe(0o600)
   })
@@ -77,7 +77,7 @@ describe('local configuration migration', () => {
       JSON.stringify({ databaseId: 'current', entitlement: { plan: 'legacy' } })
     )
 
-    expect(prepareLocalConfig(join(directory, 'missing.json'), currentPath)).toEqual({
+    expect(prepareLocalConfig([join(directory, 'missing.json')], currentPath)).toEqual({
       status: 'cleaned'
     })
     expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({ databaseId: 'current' })
@@ -89,9 +89,58 @@ describe('local configuration migration', () => {
     writeFileSync(currentPath, JSON.stringify({ databaseId: 'current' }), { mode: 0o600 })
     chmodSync(currentPath, 0o644)
 
-    expect(prepareLocalConfig(join(directory, 'missing.json'), currentPath)).toEqual({
+    expect(prepareLocalConfig([join(directory, 'missing.json')], currentPath)).toEqual({
       status: 'current-exists'
     })
     expect(statSync(currentPath).mode & 0o777).toBe(0o600)
+  })
+
+  it('prefers the latest legacy app configuration without resurrecting an older connection', () => {
+    const directory = makeTemporaryDirectory()
+    const latestLegacyPath = join(directory, 'NotionPin.json')
+    const oldestLegacyPath = join(directory, 'electron-app.json')
+    const currentPath = join(directory, 'Nopin', 'config.json')
+    writeFileSync(latestLegacyPath, JSON.stringify({ encryptedToken: null, databaseId: null }))
+    writeFileSync(
+      oldestLegacyPath,
+      JSON.stringify({ encryptedToken: 'encrypted-placeholder', databaseId: 'old-database' })
+    )
+
+    expect(prepareLocalConfig([latestLegacyPath, oldestLegacyPath], currentPath)).toEqual({
+      status: 'migrated'
+    })
+    expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({
+      encryptedToken: null,
+      databaseId: null
+    })
+  })
+
+  it('migrates the oldest app configuration when the latest legacy directory is absent', () => {
+    const directory = makeTemporaryDirectory()
+    const oldestLegacyPath = join(directory, 'electron-app.json')
+    const currentPath = join(directory, 'Nopin', 'config.json')
+    writeFileSync(oldestLegacyPath, JSON.stringify({ databaseId: 'old-database' }))
+
+    expect(
+      prepareLocalConfig([join(directory, 'NotionPin.json'), oldestLegacyPath], currentPath)
+    ).toEqual({ status: 'migrated' })
+    expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({ databaseId: 'old-database' })
+  })
+
+  it('keeps the Nopin configuration when multiple older configurations exist', () => {
+    const directory = makeTemporaryDirectory()
+    const latestLegacyPath = join(directory, 'NotionPin.json')
+    const oldestLegacyPath = join(directory, 'electron-app.json')
+    const currentPath = join(directory, 'Nopin.json')
+    writeFileSync(latestLegacyPath, JSON.stringify({ databaseId: 'recent-database' }))
+    writeFileSync(oldestLegacyPath, JSON.stringify({ databaseId: 'old-database' }))
+    writeFileSync(currentPath, JSON.stringify({ databaseId: 'current-database' }))
+
+    expect(prepareLocalConfig([latestLegacyPath, oldestLegacyPath], currentPath)).toEqual({
+      status: 'current-exists'
+    })
+    expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({
+      databaseId: 'current-database'
+    })
   })
 })

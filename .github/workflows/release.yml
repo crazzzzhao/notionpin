@@ -52,9 +52,9 @@ jobs:
 
       - name: Verify package metadata
         run: |
-          for app_bundle in dist/mac/NotionPin.app dist/mac-arm64/NotionPin.app; do
+          for app_bundle in dist/mac/Nopin.app dist/mac-arm64/Nopin.app; do
             plist="$app_bundle/Contents/Info.plist"
-            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "com.crazzzzhao.notionpin"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "com.crazzzzhao.nopin"
             for privacy_key in \
               NSAudioCaptureUsageDescription \
               NSBluetoothAlwaysUsageDescription \
@@ -74,5 +74,5 @@ jobs:
           dist/*.dmg
           dist/SHA256SUMS.txt
           --verify-tag
-          --title "NotionPin $GITHUB_REF_NAME"
+          --title "Nopin $GITHUB_REF_NAME"
           --generate-notes

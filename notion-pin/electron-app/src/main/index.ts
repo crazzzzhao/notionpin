@@ -33,13 +33,13 @@ const WINDOW_MIN_HEIGHT = 52
 const COLLAPSED_HEIGHT = 52
 const EXPANDED_HEIGHT = 420
 
-const APPLICATION_NAME = 'NotionPin'
+const APPLICATION_NAME = 'Nopin'
 const LEGACY_SAFE_STORAGE_NAME = 'electron-app'
 const requestedUserDataPath = app.getPath('userData')
 
 // macOS safeStorage derives its Keychain identity from the application name.
 // Start with the legacy identity so an existing encrypted token remains usable,
-// while keeping runtime data in NotionPin's renamed directory.
+// while keeping runtime data in Nopin's renamed directory.
 app.setName(LEGACY_SAFE_STORAGE_NAME)
 if (!app.commandLine.hasSwitch('user-data-dir')) {
   app.setPath('userData', join(app.getPath('appData'), APPLICATION_NAME))
@@ -172,12 +172,14 @@ function initializeSafeStorageCompatibility(): void {
 async function initStore(): Promise<void> {
   const Store = (await import('electron-store')).default
   const currentConfigPath = join(app.getPath('userData'), 'config.json')
-  const expectedConfigPath = join(app.getPath('appData'), 'NotionPin', 'config.json')
+  const expectedConfigPath = join(app.getPath('appData'), APPLICATION_NAME, 'config.json')
 
   // Isolated test profiles must never import the user's real legacy configuration.
   if (currentConfigPath === expectedConfigPath) {
-    const legacyConfigPath = join(app.getPath('appData'), 'electron-app', 'config.json')
-    prepareLocalConfig(legacyConfigPath, currentConfigPath)
+    const legacyConfigPaths = ['NotionPin', LEGACY_SAFE_STORAGE_NAME].map((name) =>
+      join(app.getPath('appData'), name, 'config.json')
+    )
+    prepareLocalConfig(legacyConfigPaths, currentConfigPath)
   }
 
   store = new Store<StoreSchema>({

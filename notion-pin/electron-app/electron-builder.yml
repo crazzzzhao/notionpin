@@ -1,10 +1,11 @@
-appId: com.crazzzzhao.notionpin
-productName: NotionPin
+appId: com.crazzzzhao.nopin
+productName: Nopin
 directories:
   buildResources: build
 files:
   - '!**/.vscode/*'
   - '!src/**/*'
+  - '!scripts/**/*'
   - '!**/*.test.*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'

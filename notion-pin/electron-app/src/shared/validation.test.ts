@@ -156,7 +156,7 @@ describe('IPC input validation', () => {
 
   it('validates the exact packaged renderer or the configured development origin', () => {
     const packaged =
-      'file:///Applications/NotionPin.app/Contents/Resources/app.asar/out/renderer/index.html'
+      'file:///Applications/Nopin.app/Contents/Resources/app.asar/out/renderer/index.html'
     expect(isTrustedRendererUrl(`${packaged}#settings`, packaged, false)).toBe(true)
     expect(isTrustedRendererUrl('file:///tmp/index.html', packaged, false)).toBe(false)
     expect(isTrustedRendererUrl('http://localhost:5173/app', 'http://localhost:5173/', true)).toBe(

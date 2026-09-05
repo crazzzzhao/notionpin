@@ -1,4 +1,4 @@
-# NotionPin desktop application
+# Nopin desktop application
 
 The user and contributor documentation is in the repository's [main README](../../README.md).
 

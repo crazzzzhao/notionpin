@@ -270,7 +270,7 @@ function AppContent(): React.JSX.Element {
           } as React.CSSProperties
         }
       >
-        <span className="text-base font-semibold text-foreground">NotionPin</span>
+        <span className="text-base font-semibold text-foreground">Nopin</span>
 
         {/* 右侧：Refresh, Toggle, Close - 设计稿 20x20 */}
         <div

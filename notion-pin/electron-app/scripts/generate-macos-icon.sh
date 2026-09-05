@@ -7,8 +7,8 @@ project_directory="${script_directory:h}"
 source_svg="${project_directory}/build/icon.svg"
 output_png="${project_directory}/build/icon.png"
 output_icns="${project_directory}/build/icon.icns"
-temporary_directory="$(mktemp -d /tmp/notionpin-icon.XXXXXX)"
-iconset_directory="${temporary_directory}/NotionPin.iconset"
+temporary_directory="$(mktemp -d /tmp/nopin-icon.XXXXXX)"
+iconset_directory="${temporary_directory}/Nopin.iconset"
 rendered_png="${temporary_directory}/icon.png"
 rendered_icns="${temporary_directory}/icon.icns"
 mkdir "${iconset_directory}"
@@ -20,7 +20,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sips -s format png "${source_svg}" --out "${rendered_png}" >/dev/null
+"${project_directory}/node_modules/.bin/electron" \
+  "${script_directory}/render-macos-icon.mjs" "${source_svg}" "${rendered_png}"
 
 sips -z 16 16 "${rendered_png}" --out "${iconset_directory}/icon_16x16.png" >/dev/null
 sips -z 32 32 "${rendered_png}" --out "${iconset_directory}/icon_16x16@2x.png" >/dev/null

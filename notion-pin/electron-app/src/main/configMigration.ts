@@ -38,7 +38,10 @@ function restrictConfigPermissions(path: string): void {
   }
 }
 
-export function prepareLocalConfig(legacyPath: string, currentPath: string): ConfigMigrationResult {
+export function prepareLocalConfig(
+  legacyPaths: readonly string[],
+  currentPath: string
+): ConfigMigrationResult {
   if (existsSync(currentPath)) {
     restrictConfigPermissions(currentPath)
     const currentConfig = readConfig(currentPath)
@@ -52,7 +55,10 @@ export function prepareLocalConfig(legacyPath: string, currentPath: string): Con
     return { status: 'current-exists' }
   }
 
-  if (!existsSync(legacyPath)) return { status: 'legacy-missing' }
+  // Prefer the most recent app identity, even if its config is disconnected.
+  // Never resurrect an older connection when a newer config already exists.
+  const legacyPath = legacyPaths.find((path) => existsSync(path))
+  if (!legacyPath) return { status: 'legacy-missing' }
 
   restrictConfigPermissions(legacyPath)
   const legacyConfig = readConfig(legacyPath)
