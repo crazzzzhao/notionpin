@@ -166,14 +166,6 @@ function AppContent(): React.JSX.Element {
       })
   }, [])
 
-  // Settings 独立窗口关闭后刷新主窗口
-  useEffect(() => {
-    const unsub = window.windowAPI.onSettingsWindowClosed(() => {
-      loadSettings()
-    })
-    return unsub
-  }, [loadSettings])
-
   // 切换收起/展开 - 丝滑动画
   const [isPending, startTransition] = useTransition()
   const [collapsing, setCollapsing] = useState(false)
@@ -377,6 +369,7 @@ function AppContent(): React.JSX.Element {
         initialDatabaseUrl={settings.databaseUrl || undefined}
         initialFieldMapping={settings.fieldMapping}
         initialDataSourceId={settings.dataSourceId}
+        isTokenConfigured={settings.isTokenConfigured}
       />
     </div>
   )

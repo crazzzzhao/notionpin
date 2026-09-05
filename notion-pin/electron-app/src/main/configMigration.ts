@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { isRecord } from '../shared/validation'
 
@@ -29,8 +29,18 @@ function writeConfigAtomically(path: string, value: Record<string, unknown>): vo
   renameSync(temporaryPath, path)
 }
 
+function restrictConfigPermissions(path: string): void {
+  try {
+    chmodSync(path, 0o600)
+  } catch {
+    // A read-only or non-POSIX filesystem may reject chmod. Configuration parsing
+    // still determines whether the file is safe to use.
+  }
+}
+
 export function prepareLocalConfig(legacyPath: string, currentPath: string): ConfigMigrationResult {
   if (existsSync(currentPath)) {
+    restrictConfigPermissions(currentPath)
     const currentConfig = readConfig(currentPath)
     if (!currentConfig) return { status: 'invalid' }
 
@@ -44,6 +54,7 @@ export function prepareLocalConfig(legacyPath: string, currentPath: string): Con
 
   if (!existsSync(legacyPath)) return { status: 'legacy-missing' }
 
+  restrictConfigPermissions(legacyPath)
   const legacyConfig = readConfig(legacyPath)
   if (!legacyConfig) return { status: 'invalid' }
 

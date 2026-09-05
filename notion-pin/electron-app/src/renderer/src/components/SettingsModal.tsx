@@ -16,7 +16,7 @@ import {
   Calendar
 } from 'lucide-react'
 import type { FieldMapping, PropertySchema } from '../../../preload'
-import { parseDatabaseId } from '../../../shared/validation'
+import { isFieldMappingCompatible, parseDatabaseId } from '../../../shared/validation'
 
 // ========== Zod Schema ==========
 
@@ -95,9 +95,8 @@ interface SettingsModalProps {
   initialDatabaseUrl?: string
   initialFieldMapping?: FieldMapping | null
   initialDataSourceId?: string | null
+  isTokenConfigured: boolean
   initialTab?: TabValue
-  /** 独立窗口模式：无遮罩，全屏内容 */
-  standalone?: boolean
 }
 
 export function SettingsModal({
@@ -108,8 +107,8 @@ export function SettingsModal({
   initialDatabaseUrl,
   initialFieldMapping,
   initialDataSourceId,
-  initialTab = 'connection',
-  standalone = false
+  isTokenConfigured,
+  initialTab = 'connection'
 }: SettingsModalProps): React.JSX.Element | null {
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab)
   const [token, setToken] = useState('')
@@ -178,10 +177,10 @@ export function SettingsModal({
 
   // Field Mapping tab 激活时加载 schema
   useEffect(() => {
-    if (activeTab === 'field-mapping' && schema.length === 0 && !isLoadingSchema) {
+    if (activeTab === 'field-mapping' && schema.length === 0 && !isLoadingSchema && !schemaError) {
       loadSchema()
     }
-  }, [activeTab, schema.length, isLoadingSchema, loadSchema])
+  }, [activeTab, schema.length, isLoadingSchema, schemaError, loadSchema])
 
   // 复制 Token 到剪贴板
   const handleCopyToken = useCallback(async () => {
@@ -239,26 +238,12 @@ export function SettingsModal({
   const handleVerify = async (): Promise<void> => {
     setErrors({})
 
-    // 如果 token 为空，视为断开连接操作（允许用户清空配置）
-    const isDisconnecting = !token.trim()
-
-    if (isDisconnecting) {
-      // 断开连接：清除本地配置并关闭
-      setIsSaving(true)
-      try {
-        const response = await window.settingsAPI.clear()
-        if (response.success) {
-          setDataSourceId(null)
-          onSaved()
-          onClose()
-        } else {
-          setErrors({ general: 'Unable to clear settings' })
-        }
-      } catch (error) {
-        setErrors({ general: String(error) })
-      } finally {
-        setIsSaving(false)
-      }
+    if (!token.trim()) {
+      setErrors({
+        token: isTokenConfigured
+          ? 'Enter the token again to change the connection, or use Disconnect.'
+          : 'Notion Token is required'
+      })
       return
     }
 
@@ -302,6 +287,10 @@ export function SettingsModal({
   // Field Mapping: Save Mapping
   const handleSaveMapping = async (): Promise<void> => {
     setErrors({})
+    if (!isFieldMappingCompatible(fieldMapping, schema)) {
+      setErrors({ general: 'Select valid Text, Status, and Date fields before saving' })
+      return
+    }
     setIsSaving(true)
     try {
       const response = await window.notionAPI.saveFieldMapping(fieldMapping)
@@ -324,7 +313,7 @@ export function SettingsModal({
     onClose()
   }
 
-  if (!standalone && !isOpen) return null
+  if (!isOpen) return null
 
   const tabs = [
     { title: 'Connection', value: 'connection' as TabValue },
@@ -333,9 +322,7 @@ export function SettingsModal({
 
   const contentPanel = (
     <div
-      className={`relative rounded-2xl overflow-hidden flex flex-col animate-in fade-in-0 zoom-in-95 duration-200 ${
-        standalone ? 'w-full h-full' : 'w-[290px] max-w-[calc(100%-32px)] mx-4'
-      }`}
+      className="relative rounded-2xl overflow-hidden flex flex-col animate-in fade-in-0 zoom-in-95 duration-200 w-[290px] max-w-[calc(100%-32px)] mx-4"
       style={{
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(50px)',
@@ -374,10 +361,7 @@ export function SettingsModal({
       </div>
 
       {/* Tab Content - 设计稿: padding [20, 16, 12, 20], gap 20 */}
-      <div
-        className={`space-y-5 flex-1 min-h-0 ${standalone ? 'overflow-y-auto' : ''}`}
-        style={{ padding: '20px 16px 12px 20px' }}
-      >
+      <div className="space-y-5 flex-1 min-h-0" style={{ padding: '20px 16px 12px 20px' }}>
         {errors.general && (
           <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
             {errors.general}
@@ -400,7 +384,9 @@ export function SettingsModal({
                   type={isTokenVisible ? 'text' : 'password'}
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  placeholder="secret_xxx or ntn_xxx"
+                  placeholder={
+                    isTokenConfigured ? 'Token is stored securely' : 'secret_xxx or ntn_xxx'
+                  }
                   autoComplete="off"
                   className="w-full h-10 px-3.5 pr-20 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
                   style={{
@@ -535,7 +521,7 @@ export function SettingsModal({
       </div>
 
       {/* Disconnect Notion - 设计稿: padding [0, 16, 0, 20], gap 4, 独立块 */}
-      {activeTab === 'connection' && initialDataSourceId && (
+      {activeTab === 'connection' && isTokenConfigured && (
         <div className="flex items-center gap-1" style={{ padding: '0 16px 0 20px' }}>
           <Unlink className="h-4 w-4 text-destructive" />
           <button
@@ -590,7 +576,9 @@ export function SettingsModal({
               boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
             }}
             onClick={handleSaveMapping}
-            disabled={isSaving || schema.length === 0}
+            disabled={
+              isSaving || isLoadingSchema || !isFieldMappingCompatible(fieldMapping, schema)
+            }
           >
             {isSaving ? 'Saving...' : 'Save Mapping'}
           </Button>
@@ -668,10 +656,6 @@ export function SettingsModal({
       )}
     </div>
   )
-
-  if (standalone) {
-    return contentPanel
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

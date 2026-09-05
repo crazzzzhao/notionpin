@@ -1,8 +1,12 @@
+import { STATUS_FILTER_KEYWORDS, type StatusFilterKey } from './statusFilters'
+
 const COMPACT_NOTION_ID = /^[a-f0-9]{32}$/i
 const NOTION_UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const NOTION_TOKEN = /^(secret_|ntn_)[A-Za-z0-9_-]+$/
-const NOTION_HOSTS = ['notion.so', 'notion.com', 'notion.site'] as const
-const STATUS_FILTERS = new Set(['all', 'todo', 'in-progress', 'done'])
+const NOTION_HOST = 'notion.so'
+const STATUS_FILTERS = new Set<StatusFilterKey>(
+  Object.keys(STATUS_FILTER_KEYWORDS) as StatusFilterKey[]
+)
 const UPDATE_FIELDS = new Set(['title', 'status', 'due'])
 
 export interface FieldMappingInput {
@@ -10,6 +14,15 @@ export interface FieldMappingInput {
   statusPropertyId: string | null
   timePropertyId: string | null
   boundDataSourceId?: string | null
+}
+
+export type CompleteFieldMappingInput = Omit<
+  FieldMappingInput,
+  'textPropertyId' | 'statusPropertyId' | 'timePropertyId'
+> & {
+  textPropertyId: string
+  statusPropertyId: string
+  timePropertyId: string
 }
 
 export interface PropertyUpdateInput {
@@ -23,8 +36,13 @@ export interface UpdateTaskInput {
 }
 
 export interface QueryTasksInput {
-  statusFilter?: 'all' | 'todo' | 'in-progress' | 'done'
+  statusFilter?: StatusFilterKey
   cursor?: string
+}
+
+export interface SettingsInput {
+  token: string
+  databaseUrl: string
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,9 +65,7 @@ export function isAllowedNotionUrl(value: unknown): value is string {
   try {
     const url = new URL(value)
     const hostname = url.hostname.toLowerCase()
-    const isNotionHost = NOTION_HOSTS.some(
-      (allowedHost) => hostname === allowedHost || hostname.endsWith(`.${allowedHost}`)
-    )
+    const isNotionHost = hostname === NOTION_HOST || hostname.endsWith(`.${NOTION_HOST}`)
 
     return (
       url.protocol === 'https:' &&
@@ -96,18 +112,71 @@ export function isValidNotionToken(value: unknown): value is string {
   )
 }
 
+export function isValidSettingsInput(value: unknown): value is SettingsInput {
+  return (
+    isRecord(value) &&
+    isValidNotionToken(value.token) &&
+    typeof value.databaseUrl === 'string' &&
+    parseDatabaseId(value.databaseUrl) !== null
+  )
+}
+
+export function isTrustedRendererUrl(
+  value: unknown,
+  trustedValue: string,
+  allowSameOrigin: boolean
+): value is string {
+  if (typeof value !== 'string' || value.length > 4096) return false
+
+  try {
+    const actual = new URL(value)
+    const trusted = new URL(trustedValue)
+
+    if (actual.username || actual.password || actual.port !== trusted.port) return false
+    if (allowSameOrigin) return trusted.origin !== 'null' && actual.origin === trusted.origin
+
+    actual.hash = ''
+    actual.search = ''
+    trusted.hash = ''
+    trusted.search = ''
+    return actual.href === trusted.href
+  } catch {
+    return false
+  }
+}
+
 function isNullablePropertyId(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 256)
 }
 
-export function isValidFieldMapping(value: unknown): value is FieldMappingInput {
+function isPropertyId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256
+}
+
+export function isValidFieldMapping(value: unknown): value is CompleteFieldMappingInput {
   if (!isRecord(value)) return false
 
   return (
-    isNullablePropertyId(value.textPropertyId) &&
-    isNullablePropertyId(value.statusPropertyId) &&
-    isNullablePropertyId(value.timePropertyId) &&
+    isPropertyId(value.textPropertyId) &&
+    isPropertyId(value.statusPropertyId) &&
+    isPropertyId(value.timePropertyId) &&
     (value.boundDataSourceId === undefined || isNullablePropertyId(value.boundDataSourceId))
+  )
+}
+
+export function isFieldMappingCompatible(
+  value: unknown,
+  properties: ReadonlyArray<{ id: string; type: string }>
+): value is CompleteFieldMappingInput {
+  if (!isValidFieldMapping(value)) return false
+
+  const propertyTypes = new Map(properties.map((property) => [property.id, property.type]))
+  const textType = propertyTypes.get(value.textPropertyId)
+
+  return (
+    (textType === 'title' || textType === 'rich_text') &&
+    propertyTypes.get(value.statusPropertyId) === 'status' &&
+    propertyTypes.get(value.timePropertyId) === 'date'
   )
 }
 
@@ -117,7 +186,8 @@ export function isValidQueryTasksInput(value: unknown): value is QueryTasksInput
 
   const validFilter =
     value.statusFilter === undefined ||
-    (typeof value.statusFilter === 'string' && STATUS_FILTERS.has(value.statusFilter))
+    (typeof value.statusFilter === 'string' &&
+      STATUS_FILTERS.has(value.statusFilter as StatusFilterKey))
   const validCursor =
     value.cursor === undefined ||
     (typeof value.cursor === 'string' && value.cursor.length > 0 && value.cursor.length <= 2048)

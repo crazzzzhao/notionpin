@@ -30,7 +30,7 @@ The application remains Electron/React/TypeScript for this release. A SwiftUI re
 - Adding a hosted backend, account system, payment provider, analytics, or telemetry.
 - Implementing automatic updates in the first open-source release.
 - Signing or notarizing the macOS application without an Apple Developer Program account.
-- Publishing Windows or Linux packages.
+- Publishing non-macOS packages.
 - Rewriting Git history automatically if a credential is found.
 
 ## Current-State Findings That Affect the Work

@@ -23,6 +23,8 @@ import type {
   FieldMapping,
   StatusOption
 } from '../../../preload'
+import { parseNotionDate } from '../../../shared/date'
+import { statusMatchesFilter } from '../../../shared/statusFilters'
 
 // ========== 常量配置 ==========
 
@@ -35,27 +37,6 @@ const TABS: { key: StatusFilterKey; label: string }[] = [
   { key: 'in-progress', label: 'In progress' },
   { key: 'done', label: 'Done' }
 ]
-
-// 状态过滤关键词 - 与服务端 STATUS_FILTERS 保持一致
-const STATUS_FILTER_KEYWORDS: Record<StatusFilterKey, string[] | null> = {
-  all: null,
-  todo: ['not started', 'todo', '待办'],
-  'in-progress': ['in progress', 'progress', '进行'],
-  done: ['done', 'complete', '完成']
-}
-
-/**
- * 判断某个状态值是否符合指定 tab 的筛选条件
- */
-function statusMatchesFilter(status: string | null, filterKey: StatusFilterKey): boolean {
-  if (filterKey === 'all') return true
-  const keywords = STATUS_FILTER_KEYWORDS[filterKey]
-  if (!keywords) return true
-  const statusLower = status?.toLowerCase() || ''
-  // 无状态的任务归类到 todo
-  if (!statusLower && filterKey === 'todo') return true
-  return keywords.some((keyword) => statusLower.includes(keyword))
-}
 
 // Notion API 颜色名 → hex（与 Notion UI 一致）
 const NOTION_COLOR_MAP: Record<string, { bg: string; text: string }> = {
@@ -180,9 +161,8 @@ function TaskItem({
   // 日期格式化 - 设计稿 daIAG: Today / Jan 27
   const formatDue = (due: string | null): string => {
     if (!due) return ''
-    const date = new Date(due)
-    // 检查是否为有效日期
-    if (isNaN(date.getTime())) return ''
+    const date = parseNotionDate(due)
+    if (!date) return ''
 
     const today = new Date()
     const tomorrow = new Date(today)
@@ -216,7 +196,8 @@ function TaskItem({
   // Due 日期颜色
   const getDueColor = (due: string | null): string => {
     if (!due) return 'text-muted-foreground'
-    const date = new Date(due)
+    const date = parseNotionDate(due)
+    if (!date) return 'text-muted-foreground'
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -548,7 +529,7 @@ export function TaskList({
   const { data: schemaData } = useQuery({
     queryKey: ['notion', 'schema'],
     queryFn: async () => {
-      const result = await window.notionAPI.getDatabaseSchema()
+      const result = await window.notionAPI.getSchema()
       if (!result.success) return null
       return result.properties ?? []
     },
@@ -597,7 +578,7 @@ export function TaskList({
     if (!onQueryReady) return
     if (isConfigured) {
       onQueryReady({
-        refetch: () => refetch(),
+        refetch: () => refetch({ throwOnError: true }),
         isFetching
       })
     } else {

@@ -1,3 +1,6 @@
+import type { StatusFilterKey } from '../shared/statusFilters'
+export type { StatusFilterKey } from '../shared/statusFilters'
+
 export interface WindowAPI {
   toggleCollapsed: () => Promise<boolean>
   getWindowState: () => Promise<{
@@ -8,10 +11,6 @@ export interface WindowAPI {
   close: () => Promise<void>
   minimize: () => Promise<void>
   resize: (width: number, height: number) => Promise<void>
-  openSettings: (tab?: 'connection' | 'field-mapping') => Promise<void>
-  onSettingsWindowClosed: (callback: () => void) => () => void
-  onSettingsSetTab: (callback: (tab: string) => void) => () => void
-  closeCurrentWindow: () => Promise<void>
   /** 安全打开外部链接（仅允许 notion.so 域名） */
   openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
 }
@@ -55,21 +54,7 @@ export type SchemaStatus =
   | 'loaded' // 已加载
   | 'error' // 加载失败
 
-/**
- * 映射验证状态
- */
-export type MappingStatus =
-  | 'valid' // 映射有效
-  | 'invalid' // 映射无效（database 变化等）
-  | 'incomplete' // 映射不完整
-  | 'not_configured' // 未配置
-
 export interface SettingsAPI {
-  save: (data: {
-    token: string
-    databaseUrl: string
-    databaseId: string
-  }) => Promise<{ success: boolean; error?: string }>
   load: () => Promise<{
     isTokenConfigured: boolean
     databaseId: string | null
@@ -77,11 +62,8 @@ export interface SettingsAPI {
     dataSourceId: string | null
     fieldMapping: FieldMapping | null
   }>
-  saveFieldMapping: (mapping: FieldMapping) => Promise<{ success: boolean; error?: string }>
   clear: () => Promise<{ success: boolean }>
 }
-
-export type StatusFilterKey = 'all' | 'todo' | 'in-progress' | 'done'
 
 export interface NotionTask {
   id: string
@@ -131,18 +113,6 @@ export interface GetSchemaResult {
   error?: NotionError
 }
 
-/**
- * 映射验证结果
- */
-export interface ValidateMappingResult {
-  status: MappingStatus
-  message?: string
-  // 各字段是否有效
-  textValid?: boolean
-  statusValid?: boolean
-  timeValid?: boolean
-}
-
 export interface NotionAPI {
   /**
    * 测试连接（Save & Verify）
@@ -162,15 +132,6 @@ export interface NotionAPI {
   saveFieldMapping: (mapping: FieldMapping) => Promise<{ success: boolean; error?: string }>
 
   /**
-   * 加载字段映射
-   */
-  loadFieldMapping: () => Promise<{
-    mapping: FieldMapping | null
-    status: MappingStatus
-    message?: string
-  }>
-
-  /**
    * 查询任务列表
    */
   queryTasks: (options?: { statusFilter?: StatusFilterKey; cursor?: string }) => Promise<{
@@ -179,25 +140,6 @@ export interface NotionAPI {
     hasMore?: boolean
     nextCursor?: string | null
     totalFetched?: number
-    error?: NotionError
-  }>
-
-  /**
-   * 获取 Database 信息（用于验证配置）
-   */
-  getDatabaseInfo: () => Promise<{
-    success: boolean
-    databaseId?: string
-    dataSourceId?: string
-    error?: NotionError
-  }>
-
-  /**
-   * 获取 Database Schema（兼容旧 API）
-   */
-  getDatabaseSchema: () => Promise<{
-    success: boolean
-    properties?: PropertySchema[]
     error?: NotionError
   }>
 

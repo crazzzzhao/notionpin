@@ -1,5 +1,4 @@
 const noop = async (): Promise<void> => {}
-const unsubscribe = (): void => {}
 const isElectron = navigator.userAgent.includes('Electron/')
 
 if (typeof window !== 'undefined' && !isElectron && !window.windowAPI) {
@@ -10,15 +9,10 @@ if (typeof window !== 'undefined' && !isElectron && !window.windowAPI) {
     close: noop,
     minimize: noop,
     resize: noop,
-    openSettings: noop,
-    onSettingsWindowClosed: () => unsubscribe,
-    onSettingsSetTab: () => unsubscribe,
-    closeCurrentWindow: noop,
     openExternal: async () => ({ success: true })
   }
 
   window.settingsAPI = {
-    save: async () => ({ success: true }),
     load: async () => ({
       isTokenConfigured: false,
       databaseId: null,
@@ -26,7 +20,6 @@ if (typeof window !== 'undefined' && !isElectron && !window.windowAPI) {
       dataSourceId: null,
       fieldMapping: null
     }),
-    saveFieldMapping: async () => ({ success: true }),
     clear: async () => ({ success: true })
   }
 
@@ -48,32 +41,12 @@ if (typeof window !== 'undefined' && !isElectron && !window.windowAPI) {
       }
     }),
     saveFieldMapping: async () => ({ success: true }),
-    loadFieldMapping: async () => ({
-      mapping: null,
-      status: 'not_configured' as const
-    }),
     queryTasks: async () => ({
       success: true,
       tasks: [],
       hasMore: false,
       nextCursor: null,
       totalFetched: 0
-    }),
-    getDatabaseInfo: async () => ({
-      success: false,
-      error: {
-        code: 'browser-preview',
-        message: 'Database info unavailable in browser preview',
-        userMessage: 'Database info unavailable in browser preview'
-      }
-    }),
-    getDatabaseSchema: async () => ({
-      success: false,
-      error: {
-        code: 'browser-preview',
-        message: 'Database schema unavailable in browser preview',
-        userMessage: 'Database schema unavailable in browser preview'
-      }
     }),
     updateTask: async () => ({
       success: false,

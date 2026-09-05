@@ -1,5 +1,7 @@
 # NotionPin
 
+![NotionPin logo](notion-pin/electron-app/build/icon.png)
+
 [English](#english) | [中文](#中文)
 
 NotionPin is a small, always-on-top macOS window for viewing and editing tasks stored in a Notion database. It is free and open source, has no account server, and connects directly from the desktop app to the Notion API.
@@ -23,6 +25,8 @@ Open the repository's [Releases](https://github.com/crazzzzhao/notionpin/release
 
 - `mac-arm64`: Apple Silicon Macs (M-series chips)
 - `mac-x64`: Intel Macs
+
+Both builds require macOS 13 Ventura or newer.
 
 The first public builds are unsigned because the project does not yet have an Apple Developer ID certificate. macOS may block the first normal double-click. In Finder, right-click `NotionPin.app`, choose **Open**, then confirm **Open**. If macOS still blocks it, open **System Settings → Privacy & Security** and allow the app there. Do not disable Gatekeeper system-wide.
 
@@ -50,7 +54,7 @@ Never commit a Notion token. If a token is accidentally published, revoke it in 
 
 Requirements:
 
-- macOS
+- macOS 13 Ventura or newer
 - Node.js 22.12 or newer
 - npm 11 or newer
 
@@ -81,6 +85,12 @@ npm run build:mac:arm64
 npm run build:mac:x64
 ```
 
+The editable app-icon source is `notion-pin/electron-app/build/icon.svg`. On macOS, regenerate the PNG and multi-resolution ICNS files with:
+
+```bash
+npm run icon:mac
+```
+
 Build output is written to `notion-pin/electron-app/dist/` and is intentionally ignored by Git.
 
 ### Releases
@@ -91,8 +101,9 @@ The first release does not implement automatic updates. Users download later ver
 
 ### Known limitations
 
-- macOS only
+- macOS 13 Ventura or newer only
 - Unsigned and not notarized; Gatekeeper requires manual approval on first launch
+- Each refresh loads at most 500 tasks; due dates are edited as calendar dates without a time
 - Intel artifacts can be built automatically, but maintainers should test important releases on real Intel hardware when available
 
 ## 中文
@@ -114,6 +125,8 @@ NotionPin 是一个轻量、始终置顶的 macOS Notion 任务窗口，可直�
 
 - `mac-arm64`：Apple Silicon（M 系列芯片）
 - `mac-x64`：Intel Mac
+
+两个版本都需要 macOS 13 Ventura 或更高版本。
 
 首批公开版本没有 Apple Developer ID 签名和公证。如果 macOS 拦截首次打开，请在 Finder 中右键点击 `NotionPin.app`，选择“打开”并再次确认。如果仍被拦截，前往“系统设置 → 隐私与安全性”手动允许。不要在系统范围禁用 Gatekeeper。
 
@@ -153,10 +166,13 @@ npm run build:mac:arm64
 npm run build:mac:x64
 ```
 
+图标可编辑源文件为 `notion-pin/electron-app/build/icon.svg`，在 macOS 上运行 `npm run icon:mac` 可重新生成 PNG 和多尺寸 ICNS 图标。
+
 ### 已知限制
 
-- 目前仅支持 macOS。
+- 目前仅支持 macOS 13 Ventura 或更高版本。
 - 未签名、未公证，首次打开需要手动允许。
+- 每次刷新最多读取 500 条任务；截止日期仅按日期编辑，不包含具体时间。
 - 暂无自动更新，新版本需要从 GitHub Releases 下载。
 
 ## License

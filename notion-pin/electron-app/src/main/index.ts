@@ -1,16 +1,19 @@
 import { app, shell, BrowserWindow, ipcMain, screen, safeStorage } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { pathToFileURL } from 'node:url'
+import { optimizer, is } from '@electron-toolkit/utils'
 import { prepareLocalConfig } from './configMigration'
 import {
   isAllowedNotionUrl,
+  isFieldMappingCompatible,
   isRecord,
   isValidFieldMapping,
   isValidNotionToken,
   isValidQueryTasksInput,
+  isValidSettingsInput,
   isValidUpdateTaskInput,
+  isTrustedRendererUrl,
   normalizeWindowSize,
   parseDatabaseId
 } from '../shared/validation'
@@ -30,7 +33,19 @@ const WINDOW_MIN_HEIGHT = 52
 const COLLAPSED_HEIGHT = 52
 const EXPANDED_HEIGHT = 420
 
-app.setName('NotionPin')
+const APPLICATION_NAME = 'NotionPin'
+const LEGACY_SAFE_STORAGE_NAME = 'electron-app'
+const requestedUserDataPath = app.getPath('userData')
+
+// macOS safeStorage derives its Keychain identity from the application name.
+// Start with the legacy identity so an existing encrypted token remains usable,
+// while keeping runtime data in NotionPin's renamed directory.
+app.setName(LEGACY_SAFE_STORAGE_NAME)
+if (!app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', join(app.getPath('appData'), APPLICATION_NAME))
+} else {
+  app.setPath('userData', requestedUserDataPath)
+}
 
 // ========== 字段映射类型 ==========
 
@@ -109,9 +124,6 @@ function autoDetectFieldMapping(
   return mapping
 }
 
-/**
- * 验证映射状态
- */
 function validateMapping(
   mapping: FieldMapping | null,
   currentDataSourceId: string | null
@@ -119,18 +131,15 @@ function validateMapping(
   if (!mapping) {
     return { status: 'not_configured', message: 'Please configure field mapping first' }
   }
-
-  // 检查 dataSourceId 变化
   if (mapping.boundDataSourceId && mapping.boundDataSourceId !== currentDataSourceId) {
     return { status: 'invalid', message: 'Database changed, please re-map fields.' }
   }
 
-  // 检查必填字段
-  if (!mapping.textPropertyId || !mapping.statusPropertyId || !mapping.timePropertyId) {
-    const missing: string[] = []
-    if (!mapping.textPropertyId) missing.push('Text')
-    if (!mapping.statusPropertyId) missing.push('Status')
-    if (!mapping.timePropertyId) missing.push('Time')
+  const missing: string[] = []
+  if (!mapping.textPropertyId) missing.push('Text')
+  if (!mapping.statusPropertyId) missing.push('Status')
+  if (!mapping.timePropertyId) missing.push('Time')
+  if (missing.length > 0) {
     return {
       status: 'incomplete',
       message: `Please configure these field mappings: ${missing.join(', ')}`
@@ -142,6 +151,23 @@ function validateMapping(
 
 // electron-store 是 ESM 模块，需要动态导入
 let store: import('electron-store').default<StoreSchema>
+
+function initializeSafeStorageCompatibility(): void {
+  if (!safeStorage.isEncryptionAvailable()) return
+
+  try {
+    const encryptedToken = store.get('encryptedToken')
+    if (encryptedToken) {
+      // Reading once initializes safeStorage with the legacy Keychain identity.
+      safeStorage.decryptString(Buffer.from(encryptedToken, 'base64'))
+    } else {
+      // Fresh installations still use the same stable identity. The result is discarded.
+      safeStorage.encryptString('')
+    }
+  } catch {
+    // A corrupt token is reported as unconfigured by settings:load.
+  }
+}
 
 async function initStore(): Promise<void> {
   const Store = (await import('electron-store')).default
@@ -155,6 +181,7 @@ async function initStore(): Promise<void> {
   }
 
   store = new Store<StoreSchema>({
+    configFileMode: 0o600,
     defaults: {
       windowBounds: null,
       isCollapsed: false,
@@ -165,14 +192,12 @@ async function initStore(): Promise<void> {
       fieldMapping: null
     }
   })
+
+  initializeSafeStorageCompatibility()
+  app.setName(APPLICATION_NAME)
 }
 
 let mainWindow: BrowserWindow | null = null
-let settingsWindow: BrowserWindow | null = null
-
-// Settings 独立窗口尺寸
-const SETTINGS_WINDOW_WIDTH = 360
-const SETTINGS_WINDOW_HEIGHT = 560
 
 async function openNotionUrl(url: unknown): Promise<boolean> {
   if (!isAllowedNotionUrl(url)) return false
@@ -233,14 +258,9 @@ function createWindow(): void {
     hasShadow: true, // 保留阴影
     backgroundColor: '#00000000', // 完全透明背景
     // macOS 系统级模糊 + 圆角支持
-    ...(process.platform === 'darwin'
-      ? {
-          vibrancy: 'sidebar' as const, // sidebar 提供强模糊且兼容性好
-          visualEffectState: 'active' as const,
-          roundedCorners: true // Electron 22+ 支持圆角
-        }
-      : {}),
-    ...(process.platform === 'linux' ? { icon } : {}),
+    vibrancy: 'sidebar', // sidebar 提供强模糊且兼容性好
+    visualEffectState: 'active',
+    roundedCorners: true, // Electron 22+ 支持圆角
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -287,65 +307,6 @@ function createWindow(): void {
   }
 }
 
-/**
- * 打开 Settings 独立窗口（不卡在主窗口内）
- */
-function openSettingsWindow(tab: 'connection' | 'field-mapping' = 'connection'): void {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.focus()
-    settingsWindow.webContents.send('settings:setTab', tab)
-    return
-  }
-
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
-  const { x: workAreaX, y: workAreaY } = primaryDisplay.workArea
-
-  // 居中显示在主屏幕
-  const x = workAreaX + Math.floor((screenWidth - SETTINGS_WINDOW_WIDTH) / 2)
-  const y = workAreaY + Math.floor((screenHeight - SETTINGS_WINDOW_HEIGHT) / 2)
-
-  settingsWindow = new BrowserWindow({
-    width: SETTINGS_WINDOW_WIDTH,
-    height: SETTINGS_WINDOW_HEIGHT,
-    minWidth: 320,
-    minHeight: 400,
-    x,
-    y,
-    show: false,
-    frame: true, // 有边框，可拖拽
-    resizable: true,
-    title: 'NotionPin - Settings',
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  })
-
-  configureWindowSecurity(settingsWindow)
-
-  const hash = `#settings/${tab}`
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    settingsWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + hash)
-  } else {
-    // loadFile 不支持 hash，用 loadURL
-    settingsWindow.loadURL(`file://${join(__dirname, '../renderer/index.html')}${hash}`)
-  }
-
-  settingsWindow.on('ready-to-show', () => {
-    settingsWindow?.show()
-  })
-
-  settingsWindow.on('closed', () => {
-    settingsWindow = null
-    // 通知主窗口刷新（设置可能已更改）
-    mainWindow?.webContents.send('settings:windowClosed')
-  })
-}
-
 // IPC Handlers
 function setupIPC(): void {
   function secureHandle<TArgs extends unknown[], TResult>(
@@ -354,7 +315,20 @@ function setupIPC(): void {
   ): void {
     ipcMain.handle(channel, (event, ...args) => {
       const senderWindow = BrowserWindow.fromWebContents(event.sender)
-      if (!senderWindow || (senderWindow !== mainWindow && senderWindow !== settingsWindow)) {
+      const trustedRendererUrl =
+        is.dev && process.env['ELECTRON_RENDERER_URL']
+          ? process.env['ELECTRON_RENDERER_URL']
+          : pathToFileURL(join(__dirname, '../renderer/index.html')).href
+      const trustedSender =
+        senderWindow === mainWindow &&
+        event.senderFrame === event.sender.mainFrame &&
+        isTrustedRendererUrl(
+          event.senderFrame.url,
+          trustedRendererUrl,
+          Boolean(is.dev && process.env['ELECTRON_RENDERER_URL'])
+        )
+
+      if (!trustedSender) {
         throw new Error(`Blocked IPC sender for ${channel}`)
       }
 
@@ -405,7 +379,7 @@ function setupIPC(): void {
         width: bounds.width,
         height: newHeight
       },
-      process.platform === 'darwin' // macOS 启用动画
+      true // macOS 启用动画
     )
 
     return newCollapsed
@@ -414,20 +388,6 @@ function setupIPC(): void {
   // 关闭窗口
   secureHandle('window:close', () => {
     mainWindow?.close()
-  })
-
-  // 打开 Settings 独立窗口（不卡在主窗口内）
-  secureHandle('window:openSettings', (_event, tab?: unknown) => {
-    if (tab !== undefined && tab !== 'connection' && tab !== 'field-mapping') {
-      throw new Error('Invalid settings tab')
-    }
-    openSettingsWindow(tab === 'field-mapping' ? tab : 'connection')
-  })
-
-  // 关闭当前窗口（Settings 窗口调用）
-  secureHandle('window:closeCurrent', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    win?.close()
   })
 
   // 最小化窗口
@@ -460,42 +420,6 @@ function setupIPC(): void {
   // ========== Settings IPC ==========
 
   /**
-   * 保存设置
-   * - token 使用 safeStorage 加密后存储
-   * - databaseUrl 解析出 databaseId
-   */
-  secureHandle('settings:save', (_event, data: unknown): { success: boolean; error?: string } => {
-    try {
-      if (
-        !isRecord(data) ||
-        !isValidNotionToken(data.token) ||
-        typeof data.databaseUrl !== 'string'
-      ) {
-        return { success: false, error: 'Invalid settings' }
-      }
-      const databaseId = parseDatabaseId(data.databaseUrl)
-      if (!databaseId || (data.databaseId !== undefined && data.databaseId !== databaseId)) {
-        return { success: false, error: 'Invalid Notion database' }
-      }
-      if (!safeStorage.isEncryptionAvailable()) {
-        return { success: false, error: 'Secure token storage is unavailable' }
-      }
-
-      // 加密 token
-      const encrypted = safeStorage.encryptString(data.token)
-      store.set('encryptedToken', encrypted.toString('base64'))
-
-      // 存储 database 信息
-      store.set('databaseId', databaseId)
-      store.set('databaseUrl', data.databaseUrl)
-
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: String(error) }
-    }
-  })
-
-  /**
    * 加载设置
    * - 不返回 token 明文，只返回 isTokenConfigured
    */
@@ -508,37 +432,12 @@ function setupIPC(): void {
       dataSourceId: string | null
       fieldMapping: FieldMapping | null
     } => {
-      const encryptedToken = store.get('encryptedToken')
       return {
-        isTokenConfigured: !!encryptedToken,
+        isTokenConfigured: getDecryptedToken() !== null,
         databaseId: store.get('databaseId'),
         databaseUrl: store.get('databaseUrl'),
         dataSourceId: store.get('dataSourceId'),
         fieldMapping: store.get('fieldMapping')
-      }
-    }
-  )
-
-  /**
-   * 保存字段映射
-   */
-  secureHandle(
-    'settings:saveFieldMapping',
-    (_event, mapping: unknown): { success: boolean; error?: string } => {
-      try {
-        if (!isValidFieldMapping(mapping)) {
-          return { success: false, error: 'Invalid field mapping' }
-        }
-        // 绑定当前 dataSourceId
-        const dataSourceId = store.get('dataSourceId')
-        const boundMapping: FieldMapping = {
-          ...mapping,
-          boundDataSourceId: dataSourceId
-        }
-        store.set('fieldMapping', boundMapping)
-        return { success: true }
-      } catch (error) {
-        return { success: false, error: String(error) }
       }
     }
   )
@@ -565,7 +464,8 @@ function setupIPC(): void {
     try {
       if (!safeStorage.isEncryptionAvailable()) return null
       const buffer = Buffer.from(encryptedToken, 'base64')
-      return safeStorage.decryptString(buffer)
+      const token = safeStorage.decryptString(buffer)
+      return isValidNotionToken(token) ? token : null
     } catch {
       return null
     }
@@ -589,11 +489,7 @@ function setupIPC(): void {
       propertyCount?: number
       error?: NotionError
     }> => {
-      if (
-        !isRecord(data) ||
-        !isValidNotionToken(data.token) ||
-        typeof data.databaseUrl !== 'string'
-      ) {
+      if (!isValidSettingsInput(data)) {
         return {
           success: false,
           error: {
@@ -766,12 +662,31 @@ function setupIPC(): void {
    */
   secureHandle(
     'notion:saveFieldMapping',
-    (_event, mapping: unknown): { success: boolean; error?: string } => {
+    async (_event, mapping: unknown): Promise<{ success: boolean; error?: string }> => {
       try {
         if (!isValidFieldMapping(mapping)) {
-          return { success: false, error: 'Invalid field mapping' }
+          return { success: false, error: 'Select a Text, Status, and Date field' }
         }
+        const token = getDecryptedToken()
         const dataSourceId = store.get('dataSourceId')
+        if (!token || !dataSourceId) {
+          return { success: false, error: 'Save and verify the connection first' }
+        }
+
+        const schemaResult = await getNotionService(token).getDataSourceSchema(dataSourceId)
+        if (!schemaResult.success || !schemaResult.properties) {
+          return {
+            success: false,
+            error: schemaResult.error?.userMessage || 'Unable to verify the current database schema'
+          }
+        }
+        if (!isFieldMappingCompatible(mapping, schemaResult.properties)) {
+          return {
+            success: false,
+            error: 'The selected fields no longer match the required Text, Status, and Date types'
+          }
+        }
+
         const boundMapping: FieldMapping = {
           ...mapping,
           boundDataSourceId: dataSourceId
@@ -780,27 +695,6 @@ function setupIPC(): void {
         return { success: true }
       } catch (error) {
         return { success: false, error: String(error) }
-      }
-    }
-  )
-
-  /**
-   * 加载字段映射
-   */
-  secureHandle(
-    'notion:loadFieldMapping',
-    (): {
-      mapping: FieldMapping | null
-      status: MappingStatus
-      message?: string
-    } => {
-      const mapping = store.get('fieldMapping')
-      const dataSourceId = store.get('dataSourceId')
-      const validation = validateMapping(mapping, dataSourceId)
-      return {
-        mapping,
-        status: validation.status,
-        message: validation.message
       }
     }
   )
@@ -939,144 +833,6 @@ function setupIPC(): void {
   )
 
   /**
-   * 获取 Database 信息（用于验证配置）
-   */
-  secureHandle(
-    'notion:getDatabaseInfo',
-    async (): Promise<{
-      success: boolean
-      databaseId?: string
-      dataSourceId?: string
-      error?: NotionError
-    }> => {
-      const token = getDecryptedToken()
-      const databaseId = store.get('databaseId')
-
-      if (!token || !databaseId) {
-        return {
-          success: false,
-          error: {
-            code: 'not_configured',
-            message: 'Not configured',
-            userMessage: 'Please configure Notion Token and Database first'
-          }
-        }
-      }
-
-      try {
-        const service = getNotionService(token)
-        const result = await service.getDatabaseAndDataSources(databaseId)
-
-        if (result.success) {
-          // 保存 dataSourceId
-          if (result.defaultDataSourceId) {
-            store.set('dataSourceId', result.defaultDataSourceId)
-          }
-          return {
-            success: true,
-            databaseId,
-            dataSourceId: result.defaultDataSourceId
-          }
-        } else {
-          return {
-            success: false,
-            error: result.error
-          }
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: {
-            code: 'unknown',
-            message: String(error),
-            userMessage: 'Error verifying Database'
-          }
-        }
-      }
-    }
-  )
-
-  /**
-   * 获取 Database Schema（兼容旧 API）
-   * 使用 dataSources.retrieve 获取 schema.properties
-   */
-  secureHandle(
-    'notion:getDatabaseSchema',
-    async (): Promise<{
-      success: boolean
-      properties?: Array<{
-        id: string
-        name: string
-        type: string
-        options?: Array<{ id: string; name: string; color: string }>
-      }>
-      error?: NotionError
-    }> => {
-      const token = getDecryptedToken()
-      const databaseId = store.get('databaseId')
-      let dataSourceId = store.get('dataSourceId')
-
-      if (!token || !databaseId) {
-        return {
-          success: false,
-          error: {
-            code: 'not_configured',
-            message: 'Not configured',
-            userMessage: 'Please configure Notion Token and Database first'
-          }
-        }
-      }
-
-      try {
-        const service = getNotionService(token)
-
-        if (!dataSourceId) {
-          const dbResult = await service.getDatabaseAndDataSources(databaseId)
-          if (!dbResult.success || !dbResult.defaultDataSourceId) {
-            return {
-              success: false,
-              error: dbResult.error || {
-                code: 'no_data_source',
-                message: 'No data source found',
-                userMessage: 'Please Save & Verify in Connection first'
-              }
-            }
-          }
-          dataSourceId = dbResult.defaultDataSourceId
-          store.set('dataSourceId', dataSourceId)
-        }
-
-        const result = await service.getDataSourceSchema(dataSourceId)
-
-        if (result.success && result.properties) {
-          return {
-            success: true,
-            properties: result.properties
-          }
-        } else {
-          return {
-            success: false,
-            error: result.error || {
-              code: 'no_properties',
-              message: 'No properties found',
-              userMessage: 'Failed to load database schema'
-            }
-          }
-        }
-      } catch (error) {
-        return {
-          success: false,
-          error: {
-            code: 'unknown',
-            message: String(error),
-            userMessage: 'Error loading database schema'
-          }
-        }
-      }
-    }
-  )
-
-  /**
    * 更新任务（Title/Status/Due）
    * 支持节流合并和 429 重试
    */
@@ -1184,8 +940,6 @@ function setupIPC(): void {
    */
   secureHandle('notion:clearCache', () => {
     clearNotionServiceCache()
-    // 清除 dataSourceId，下次查询时重新获取
-    store.set('dataSourceId', null)
     return { success: true }
   })
 }
@@ -1194,9 +948,6 @@ function setupIPC(): void {
 app.whenReady().then(async () => {
   // 初始化 store
   await initStore()
-
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.crazzzzhao.notionpin')
 
   // Default open or close DevTools by F12 in development
   app.on('browser-window-created', (_, window) => {
@@ -1211,11 +962,4 @@ app.whenReady().then(async () => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
-
-// Quit when all windows are closed, except on macOS
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
 })

@@ -3,7 +3,7 @@ name: Release macOS
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: notion-pin/electron-app
     env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
       GH_TOKEN: ${{ github.token }}
 
     steps:
@@ -49,6 +49,21 @@ jobs:
 
       - name: Package Apple Silicon DMG
         run: npx electron-builder --mac --arm64
+
+      - name: Verify package metadata
+        run: |
+          for app_bundle in dist/mac/NotionPin.app dist/mac-arm64/NotionPin.app; do
+            plist="$app_bundle/Contents/Info.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "com.crazzzzhao.notionpin"
+            for privacy_key in \
+              NSAudioCaptureUsageDescription \
+              NSBluetoothAlwaysUsageDescription \
+              NSBluetoothPeripheralUsageDescription \
+              NSCameraUsageDescription \
+              NSMicrophoneUsageDescription; do
+              ! /usr/libexec/PlistBuddy -c "Print :$privacy_key" "$plist" >/dev/null 2>&1
+            done
+          done
 
       - name: Generate checksums
         run: cd dist && shasum -a 256 *.dmg > SHA256SUMS.txt

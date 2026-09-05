@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   isAllowedNotionUrl,
+  isFieldMappingCompatible,
   isValidFieldMapping,
   isValidNotionToken,
   isValidQueryTasksInput,
+  isValidSettingsInput,
   isValidUpdateTaskInput,
+  isTrustedRendererUrl,
   normalizeNotionId,
   normalizeWindowSize,
   parseDatabaseId
@@ -21,8 +24,7 @@ describe('Notion identifiers', () => {
 
   it('extracts IDs from supported Notion URLs, including titled paths', () => {
     expect(parseDatabaseId(`https://www.notion.so/${compactId}?v=123`)).toBe(compactId)
-    expect(parseDatabaseId(`https://workspace.notion.site/My-Tasks-${compactId}`)).toBe(compactId)
-    expect(parseDatabaseId(`https://app.notion.com/My-Tasks-${compactId}`)).toBe(compactId)
+    expect(parseDatabaseId(`https://workspace.notion.so/My-Tasks-${compactId}`)).toBe(compactId)
   })
 
   it('rejects malformed IDs and IDs embedded on unrelated hosts', () => {
@@ -35,7 +37,7 @@ describe('Notion identifiers', () => {
 describe('external URL validation', () => {
   it('allows HTTPS Notion domains', () => {
     expect(isAllowedNotionUrl(`https://www.notion.so/${compactId}`)).toBe(true)
-    expect(isAllowedNotionUrl(`https://app.notion.com/${compactId}`)).toBe(true)
+    expect(isAllowedNotionUrl(`https://workspace.notion.so/${compactId}`)).toBe(true)
   })
 
   it('rejects unsafe schemes, credentials, ports, and deceptive domains', () => {
@@ -44,6 +46,8 @@ describe('external URL validation', () => {
     expect(isAllowedNotionUrl(`https://user:pass@notion.so/${compactId}`)).toBe(false)
     expect(isAllowedNotionUrl(`https://notion.so:8443/${compactId}`)).toBe(false)
     expect(isAllowedNotionUrl(`https://notion.so.evil.example/${compactId}`)).toBe(false)
+    expect(isAllowedNotionUrl(`https://app.notion.com/${compactId}`)).toBe(false)
+    expect(isAllowedNotionUrl(`https://workspace.notion.site/${compactId}`)).toBe(false)
   })
 })
 
@@ -55,6 +59,22 @@ describe('IPC input validation', () => {
     expect(isValidNotionToken('invalid-token')).toBe(false)
   })
 
+  it('validates complete settings objects and rejects malformed payloads', () => {
+    const validSettings = {
+      token: 'ntn_example_token_value',
+      databaseUrl: `https://www.notion.so/Tasks-${compactId}`
+    }
+
+    expect(isValidSettingsInput(validSettings)).toBe(true)
+    expect(isValidSettingsInput(null)).toBe(false)
+    expect(isValidSettingsInput([])).toBe(false)
+    expect(isValidSettingsInput({ ...validSettings, token: 'invalid-token' })).toBe(false)
+    expect(
+      isValidSettingsInput({ ...validSettings, databaseUrl: 'https://example.com/tasks' })
+    ).toBe(false)
+    expect(isValidSettingsInput({ token: validSettings.token })).toBe(false)
+  })
+
   it('validates field mappings', () => {
     expect(
       isValidFieldMapping({
@@ -64,7 +84,36 @@ describe('IPC input validation', () => {
         boundDataSourceId: null
       })
     ).toBe(true)
+    expect(
+      isValidFieldMapping({
+        textPropertyId: null,
+        statusPropertyId: null,
+        timePropertyId: null
+      })
+    ).toBe(false)
     expect(isValidFieldMapping({ textPropertyId: [], statusPropertyId: null })).toBe(false)
+  })
+
+  it('requires field mappings to match the current schema types', () => {
+    const mapping = {
+      textPropertyId: 'name',
+      statusPropertyId: 'state',
+      timePropertyId: 'due'
+    }
+    const schema = [
+      { id: 'name', type: 'title' },
+      { id: 'state', type: 'status' },
+      { id: 'due', type: 'date' }
+    ]
+
+    expect(isFieldMappingCompatible(mapping, schema)).toBe(true)
+    expect(
+      isFieldMappingCompatible(mapping, [
+        ...schema.filter((property) => property.id !== 'state'),
+        { id: 'state', type: 'select' }
+      ])
+    ).toBe(false)
+    expect(isFieldMappingCompatible({ ...mapping, timePropertyId: null }, schema)).toBe(false)
   })
 
   it('validates query filters and cursors', () => {
@@ -103,5 +152,18 @@ describe('IPC input validation', () => {
     expect(normalizeWindowSize(9000, 9000, 400, 52)).toEqual({ width: 4096, height: 4096 })
     expect(normalizeWindowSize(Number.NaN, 500, 400, 52)).toBeNull()
     expect(normalizeWindowSize('500', 500, 400, 52)).toBeNull()
+  })
+
+  it('validates the exact packaged renderer or the configured development origin', () => {
+    const packaged =
+      'file:///Applications/NotionPin.app/Contents/Resources/app.asar/out/renderer/index.html'
+    expect(isTrustedRendererUrl(`${packaged}#settings`, packaged, false)).toBe(true)
+    expect(isTrustedRendererUrl('file:///tmp/index.html', packaged, false)).toBe(false)
+    expect(isTrustedRendererUrl('http://localhost:5173/app', 'http://localhost:5173/', true)).toBe(
+      true
+    )
+    expect(isTrustedRendererUrl('http://evil.local:5173/', 'http://localhost:5173/', true)).toBe(
+      false
+    )
   })
 })

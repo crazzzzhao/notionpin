@@ -10,15 +10,20 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
 mac:
   target:
     - dmg
   category: public.app-category.productivity
   icon: build/icon.icns
+  minimumSystemVersion: '13.0'
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
+  extendInfo:
+    NSAudioCaptureUsageDescription: null
+    NSBluetoothAlwaysUsageDescription: null
+    NSBluetoothPeripheralUsageDescription: null
+    NSCameraUsageDescription: null
+    NSMicrophoneUsageDescription: null
 dmg:
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
 npmRebuild: false

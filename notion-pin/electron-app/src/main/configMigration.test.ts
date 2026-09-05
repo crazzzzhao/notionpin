@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { prepareLocalConfig, stripObsoleteLocalState } from './configMigration'
@@ -43,7 +43,8 @@ describe('local configuration migration', () => {
         databaseId: 'database-id',
         fieldMapping: { textPropertyId: 'title' },
         entitlement: { plan: 'legacy' }
-      })
+      }),
+      { mode: 0o644 }
     )
 
     expect(prepareLocalConfig(legacyPath, currentPath)).toEqual({ status: 'migrated' })
@@ -52,6 +53,8 @@ describe('local configuration migration', () => {
       databaseId: 'database-id',
       fieldMapping: { textPropertyId: 'title' }
     })
+    expect(statSync(currentPath).mode & 0o777).toBe(0o600)
+    expect(statSync(legacyPath).mode & 0o777).toBe(0o600)
   })
 
   it('does not overwrite an existing destination', () => {
@@ -59,10 +62,11 @@ describe('local configuration migration', () => {
     const legacyPath = join(directory, 'legacy.json')
     const currentPath = join(directory, 'current.json')
     writeFileSync(legacyPath, JSON.stringify({ databaseId: 'legacy' }))
-    writeFileSync(currentPath, JSON.stringify({ databaseId: 'current' }))
+    writeFileSync(currentPath, JSON.stringify({ databaseId: 'current' }), { mode: 0o644 })
 
     expect(prepareLocalConfig(legacyPath, currentPath)).toEqual({ status: 'current-exists' })
     expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({ databaseId: 'current' })
+    expect(statSync(currentPath).mode & 0o777).toBe(0o600)
   })
 
   it('cleans an existing destination in place', () => {
@@ -77,5 +81,17 @@ describe('local configuration migration', () => {
       status: 'cleaned'
     })
     expect(JSON.parse(readFileSync(currentPath, 'utf8'))).toEqual({ databaseId: 'current' })
+  })
+
+  it('restricts permissions without changing an existing valid destination', () => {
+    const directory = makeTemporaryDirectory()
+    const currentPath = join(directory, 'current.json')
+    writeFileSync(currentPath, JSON.stringify({ databaseId: 'current' }), { mode: 0o600 })
+    chmodSync(currentPath, 0o644)
+
+    expect(prepareLocalConfig(join(directory, 'missing.json'), currentPath)).toEqual({
+      status: 'current-exists'
+    })
+    expect(statSync(currentPath).mode & 0o777).toBe(0o600)
   })
 })

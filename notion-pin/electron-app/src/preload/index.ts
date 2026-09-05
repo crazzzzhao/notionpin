@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { StatusFilterKey } from '../shared/statusFilters'
+export type { StatusFilterKey } from '../shared/statusFilters'
 
 // Window 控制 API
 const windowAPI = {
@@ -25,27 +27,6 @@ const windowAPI = {
   resize: (width: number, height: number): Promise<void> =>
     ipcRenderer.invoke('window:resize', width, height),
 
-  // 打开 Settings 独立窗口（不卡在主窗口内）
-  openSettings: (tab?: 'connection' | 'field-mapping'): Promise<void> =>
-    ipcRenderer.invoke('window:openSettings', tab),
-
-  // 监听 Settings 窗口关闭（主窗口用）
-  onSettingsWindowClosed: (callback: () => void): (() => void) => {
-    const handler = (): void => callback()
-    ipcRenderer.on('settings:windowClosed', handler)
-    return () => ipcRenderer.removeListener('settings:windowClosed', handler)
-  },
-
-  // 监听 Settings Tab 切换（Settings 窗口用）
-  onSettingsSetTab: (callback: (tab: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, tab: string): void => callback(tab)
-    ipcRenderer.on('settings:setTab', handler)
-    return () => ipcRenderer.removeListener('settings:setTab', handler)
-  },
-
-  // 关闭当前窗口（Settings 窗口用）
-  closeCurrentWindow: (): Promise<void> => ipcRenderer.invoke('window:closeCurrent'),
-
   // 安全打开外部链接（仅允许 notion.so 域名）
   openExternal: (url: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('shell:openExternal', url)
@@ -67,18 +48,8 @@ export interface PropertySchema {
   options?: Array<{ id: string; name: string; color: string }>
 }
 
-// 映射状态
-type MappingStatus = 'valid' | 'invalid' | 'incomplete' | 'not_configured'
-
 // Settings API - token 永远不暴露给 renderer
 const settingsAPI = {
-  // 保存设置（token 会在 main process 加密存储）
-  save: (data: {
-    token: string
-    databaseUrl: string
-    databaseId: string
-  }): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('settings:save', data),
-
   // 加载设置（不返回 token 明文）
   load: (): Promise<{
     isTokenConfigured: boolean
@@ -88,17 +59,11 @@ const settingsAPI = {
     fieldMapping: FieldMapping | null
   }> => ipcRenderer.invoke('settings:load'),
 
-  // 保存字段映射
-  saveFieldMapping: (mapping: FieldMapping): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('settings:saveFieldMapping', mapping),
-
   // 清除设置
   clear: (): Promise<{ success: boolean }> => ipcRenderer.invoke('settings:clear')
 }
 
 // Notion API - 所有请求通过 main process 处理，token 安全
-export type StatusFilterKey = 'all' | 'todo' | 'in-progress' | 'done'
-
 export interface NotionTask {
   id: string
   title: string
@@ -152,13 +117,6 @@ const notionAPI = {
   saveFieldMapping: (mapping: FieldMapping): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('notion:saveFieldMapping', mapping),
 
-  // 加载字段映射
-  loadFieldMapping: (): Promise<{
-    mapping: FieldMapping | null
-    status: MappingStatus
-    message?: string
-  }> => ipcRenderer.invoke('notion:loadFieldMapping'),
-
   // 查询任务列表（支持 filter 和分页）
   queryTasks: (options?: {
     statusFilter?: StatusFilterKey
@@ -171,21 +129,6 @@ const notionAPI = {
     totalFetched?: number
     error?: NotionError
   }> => ipcRenderer.invoke('notion:queryTasks', options),
-
-  // 获取 Database 信息
-  getDatabaseInfo: (): Promise<{
-    success: boolean
-    databaseId?: string
-    dataSourceId?: string
-    error?: NotionError
-  }> => ipcRenderer.invoke('notion:getDatabaseInfo'),
-
-  // 获取 Database Schema（用于字段映射）- 兼容旧 API
-  getDatabaseSchema: (): Promise<{
-    success: boolean
-    properties?: PropertySchema[]
-    error?: NotionError
-  }> => ipcRenderer.invoke('notion:getDatabaseSchema'),
 
   // 更新任务（Title/Status/Due）
   updateTask: (options: {

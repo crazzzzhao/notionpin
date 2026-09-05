@@ -8,6 +8,8 @@
  */
 
 import { Client, APIErrorCode, isNotionClientError } from '@notionhq/client'
+import { statusMatchesFilter, type StatusFilterKey } from '../../shared/statusFilters'
+export type { StatusFilterKey } from '../../shared/statusFilters'
 
 // ========== 常量配置 ==========
 
@@ -15,16 +17,6 @@ const PAGE_SIZE = 100 // Notion API 最大 100
 const MAX_PAGES = 5 // 最多拉取 5 页（500 条）
 const UPDATE_THROTTLE_MS = 400 // 更新节流时间（合并快速连续更新）
 const MAX_RETRY_COUNT = 1 // 429 最多重试次数
-
-// 状态过滤映射（对应 Notion Status 属性）
-export const STATUS_FILTERS = {
-  all: null,
-  todo: ['not started', 'todo', '待办'],
-  'in-progress': ['in progress', 'progress', '进行'],
-  done: ['done', 'complete', '完成']
-} as const
-
-export type StatusFilterKey = keyof typeof STATUS_FILTERS
 
 // ========== 类型定义 ==========
 
@@ -139,8 +131,10 @@ interface WriteQueueItem {
   updates: PropertyUpdate[]
   fieldMapping: FieldMapping
   propertyTypes?: Record<string, string>
-  resolve: (result: UpdateTaskResult) => void
-  reject: (error: Error) => void
+  waiters: Array<{
+    resolve: (result: UpdateTaskResult) => void
+    reject: (error: Error) => void
+  }>
   timer: ReturnType<typeof setTimeout> | null
 }
 
@@ -214,9 +208,10 @@ function delay(ms: number): Promise<void> {
 
 export class NotionService {
   private client: Client
-  private propertyCache: Map<string, PropertySchema[]> = new Map()
   // 写请求队列（按 pageId 分组）
   private writeQueue: Map<string, WriteQueueItem> = new Map()
+  // 同一 pageId 只允许一个写请求在途，避免旧响应覆盖新值
+  private inFlightPages = new Set<string>()
 
   constructor(token: string) {
     this.client = new Client({ auth: token })
@@ -256,11 +251,8 @@ export class NotionService {
         }
         existing.timer = setTimeout(() => this.flushWrite(pageId), UPDATE_THROTTLE_MS)
 
-        // 返回同一个 Promise（通过链式调用）
-        existing.resolve = (result) => {
-          resolve(result)
-        }
-        existing.reject = reject
+        // Every caller must settle when the merged write completes.
+        existing.waiters.push({ resolve, reject })
       } else {
         // 新请求
         const item: WriteQueueItem = {
@@ -268,8 +260,7 @@ export class NotionService {
           updates,
           fieldMapping,
           propertyTypes,
-          resolve,
-          reject,
+          waiters: [{ resolve, reject }],
           timer: setTimeout(() => this.flushWrite(pageId), UPDATE_THROTTLE_MS)
         }
         this.writeQueue.set(pageId, item)
@@ -284,8 +275,16 @@ export class NotionService {
     const item = this.writeQueue.get(pageId)
     if (!item) return
 
+    // 新更新的节流计时器可能在前一个请求完成前触发。
+    // 标记为已到期，由在途请求的 finally 立即接续执行。
+    if (this.inFlightPages.has(pageId)) {
+      item.timer = null
+      return
+    }
+
     this.writeQueue.delete(pageId)
     item.timer = null
+    this.inFlightPages.add(pageId)
 
     try {
       const result = await this.executeUpdate(
@@ -294,9 +293,20 @@ export class NotionService {
         item.fieldMapping,
         item.propertyTypes
       )
-      item.resolve(result)
+      for (const waiter of item.waiters) {
+        waiter.resolve(result)
+      }
     } catch (error) {
-      item.reject(error as Error)
+      for (const waiter of item.waiters) {
+        waiter.reject(error as Error)
+      }
+    } finally {
+      this.inFlightPages.delete(pageId)
+
+      const pendingItem = this.writeQueue.get(pageId)
+      if (pendingItem && pendingItem.timer === null) {
+        pendingItem.timer = setTimeout(() => this.flushWrite(pageId), 0)
+      }
     }
   }
 
@@ -525,11 +535,6 @@ export class NotionService {
         }
       }
 
-      // 缓存 properties
-      if (defaultDataSource?.id) {
-        this.propertyCache.set(defaultDataSource.id, properties)
-      }
-
       return {
         success: true,
         dataSources,
@@ -611,15 +616,7 @@ export class NotionService {
    * 客户端过滤任务状态
    */
   private filterTasksByStatus(tasks: NotionTask[], statusFilter: StatusFilterKey): NotionTask[] {
-    const keywords = STATUS_FILTERS[statusFilter]
-    if (!keywords) return tasks
-
-    return tasks.filter((task) => {
-      const status = task.status?.toLowerCase() || ''
-      // 无状态的任务归类到 todo
-      if (!status && statusFilter === 'todo') return true
-      return keywords.some((keyword) => status.includes(keyword))
-    })
+    return tasks.filter((task) => statusMatchesFilter(task.status, statusFilter))
   }
 
   /**
@@ -630,6 +627,8 @@ export class NotionService {
     const allTasks: NotionTask[] = []
     let cursor: string | undefined = undefined
     let pageCount = 0
+    let retryCount = 0
+    let remainingCursor: string | null = null
 
     while (pageCount < MAX_PAGES) {
       const result = await this.queryTasks({
@@ -638,13 +637,16 @@ export class NotionService {
       })
 
       if (!result.success) {
-        // 如果是限流错误，等待后重试一次
-        if (result.error?.code === 'rate_limited' && result.error.retryAfter) {
-          await delay(result.error.retryAfter * 1000)
+        // Retry a rate-limited page only a bounded number of times.
+        if (result.error?.code === 'rate_limited' && retryCount < MAX_RETRY_COUNT) {
+          retryCount++
+          await delay((result.error.retryAfter ?? 1) * 1000)
           continue // 重试当前页
         }
         return result
       }
+
+      retryCount = 0
 
       if (result.tasks) {
         allTasks.push(...result.tasks)
@@ -652,17 +654,19 @@ export class NotionService {
 
       pageCount++
 
-      if (!result.hasMore || !result.nextCursor) {
+      remainingCursor = result.hasMore && result.nextCursor ? result.nextCursor : null
+      if (!remainingCursor) {
         break
       }
 
-      cursor = result.nextCursor
+      cursor = remainingCursor
     }
 
     return {
       success: true,
       tasks: allTasks,
-      hasMore: pageCount >= MAX_PAGES,
+      hasMore: remainingCursor !== null,
+      nextCursor: remainingCursor,
       totalFetched: allTasks.length
     }
   }
@@ -671,7 +675,7 @@ export class NotionService {
    * 解析 Notion page 为 Task 对象
    * Text: title/rich_text -> plain_text 拼接
    * Status: status -> status.name（仅 status 类型，不含 select）
-   * Time: date -> date.start（带时间则显示到分钟）
+   * Time: date -> date.start（UI 仅编辑日期，因此规范化为 YYYY-MM-DD）
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private parsePageToTask(page: any, fieldMapping?: FieldMapping | null): NotionTask {
@@ -701,7 +705,7 @@ export class NotionService {
       status = statusProp.status.name
     }
 
-    // Time: date -> date.start（带时间则保留到分钟）
+    // Time: date -> date.start（UI 使用 input[type=date]）
     let due: string | null = null
     const timeProp = fieldMapping?.timePropertyId
       ? this.findPropertyById(properties, fieldMapping.timePropertyId)
@@ -714,7 +718,7 @@ export class NotionService {
         ])
 
     if (timeProp?.type === 'date' && timeProp.date?.start) {
-      due = this.formatDateForDisplay(timeProp.date.start)
+      due = this.formatDateForInput(timeProp.date.start)
     }
 
     return {
@@ -727,20 +731,9 @@ export class NotionService {
     }
   }
 
-  /** 日期格式化：带时间则显示到分钟 */
-  private formatDateForDisplay(dateStr: string): string {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    const hasTime = dateStr.includes('T') && dateStr.length > 10
-    if (hasTime) {
-      const y = date.getFullYear()
-      const m = String(date.getMonth() + 1).padStart(2, '0')
-      const d = String(date.getDate()).padStart(2, '0')
-      const h = String(date.getHours()).padStart(2, '0')
-      const min = String(date.getMinutes()).padStart(2, '0')
-      return `${y}-${m}-${d} ${h}:${min}`
-    }
-    return dateStr
+  /** Preserve Notion's calendar date without applying a local timezone shift. */
+  private formatDateForInput(dateStr: string): string {
+    return dateStr.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? ''
   }
 
   /**
