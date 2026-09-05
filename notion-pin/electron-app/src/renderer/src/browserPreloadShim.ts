@@ -2,10 +2,14 @@ const noop = async (): Promise<void> => {}
 const isElectron = navigator.userAgent.includes('Electron/')
 
 if (typeof window !== 'undefined' && !isElectron && !window.windowAPI) {
+  let isCollapsed = false
+  document.documentElement.dataset.browserPreview = 'true'
   window.windowAPI = {
-    toggleCollapsed: async () => false,
-    getWindowState: async () => ({ isCollapsed: false, bounds: null }),
-    setWindowState: noop,
+    setCollapsed: async (collapsed) => {
+      isCollapsed = collapsed
+      return isCollapsed
+    },
+    getWindowState: async () => ({ isCollapsed, bounds: null }),
     close: noop,
     minimize: noop,
     resize: noop,

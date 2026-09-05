@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
@@ -513,7 +513,8 @@ interface TaskListProps {
   onQueryReady?: (controls: { refetch: () => Promise<unknown>; isFetching: boolean } | null) => void
 }
 
-export function TaskList({
+// Window-only state changes must not re-render hundreds of unchanged task rows.
+export const TaskList = memo(function TaskList({
   isConfigured,
   fieldMapping,
   onOpenSettings,
@@ -848,4 +849,4 @@ export function TaskList({
       {updateError && <SonnerToast type="error" onDismiss={handleDismissToast} />}
     </div>
   )
-}
+})

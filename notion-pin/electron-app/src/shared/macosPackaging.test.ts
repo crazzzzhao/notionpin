@@ -7,6 +7,11 @@ const appRoot = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const repositoryRoot = join(appRoot, '../..')
 
 describe('unsigned macOS release safeguards', () => {
+  it('never bundles earlier releases or diagnostic output into a preview build', () => {
+    const config = readFileSync(join(appRoot, 'electron-builder.yml'), 'utf8')
+    expect(config).toContain("  - '!dist{,/**/*}'")
+  })
+
   it('seals the app with an ad-hoc signature while keeping notarization disabled', () => {
     const config = readFileSync(join(appRoot, 'electron-builder.yml'), 'utf8')
 

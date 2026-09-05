@@ -1,21 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { StatusFilterKey } from '../shared/statusFilters'
+import type { WindowTransitionOptions } from '../shared/windowState'
 export type { StatusFilterKey } from '../shared/statusFilters'
 
 // Window 控制 API
 const windowAPI = {
-  // 切换收起/展开状态
-  toggleCollapsed: (): Promise<boolean> => ipcRenderer.invoke('window:toggleCollapsed'),
+  // Request an explicit state; content motion never gates the native resize.
+  setCollapsed: (collapsed: boolean, options?: WindowTransitionOptions): Promise<boolean> =>
+    ipcRenderer.invoke('window:setCollapsed', collapsed, options),
 
   // 获取窗口状态
   getWindowState: (): Promise<{
     isCollapsed: boolean
     bounds: { x: number; y: number; width: number; height: number } | null
   }> => ipcRenderer.invoke('window:getState'),
-
-  // 设置窗口状态
-  setWindowState: (state: { isCollapsed?: boolean }): Promise<void> =>
-    ipcRenderer.invoke('window:setState', state),
 
   // 关闭窗口
   close: (): Promise<void> => ipcRenderer.invoke('window:close'),

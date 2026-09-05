@@ -4,10 +4,16 @@ import { join } from 'path'
 import { pathToFileURL } from 'node:url'
 import { optimizer, is } from '@electron-toolkit/utils'
 import { prepareLocalConfig } from './configMigration'
+import { parseCollapseRequest } from '../shared/windowState'
+import {
+  COLLAPSED_HEIGHT,
+  DEFAULT_EXPANDED_HEIGHT,
+  normalizeExpandedHeight,
+  WindowStateController
+} from './windowState'
 import {
   isAllowedNotionUrl,
   isFieldMappingCompatible,
-  isRecord,
   isValidFieldMapping,
   isValidNotionToken,
   isValidQueryTasksInput,
@@ -30,8 +36,6 @@ import {
 const WINDOW_WIDTH = 400
 const WINDOW_MIN_WIDTH = 400
 const WINDOW_MIN_HEIGHT = 52
-const COLLAPSED_HEIGHT = 52
-const EXPANDED_HEIGHT = 420
 
 const APPLICATION_NAME = 'Nopin'
 const LEGACY_SAFE_STORAGE_NAME = 'electron-app'
@@ -67,6 +71,7 @@ type MappingStatus = 'valid' | 'invalid' | 'incomplete' | 'not_configured'
 interface StoreSchema {
   windowBounds: { x: number; y: number; width: number; height: number } | null
   isCollapsed: boolean
+  expandedHeight: number
   // Settings - token 加密存储
   encryptedToken: string | null
   databaseId: string | null
@@ -187,6 +192,7 @@ async function initStore(): Promise<void> {
     defaults: {
       windowBounds: null,
       isCollapsed: false,
+      expandedHeight: DEFAULT_EXPANDED_HEIGHT,
       encryptedToken: null,
       databaseId: null,
       databaseUrl: null,
@@ -200,6 +206,7 @@ async function initStore(): Promise<void> {
 }
 
 let mainWindow: BrowserWindow | null = null
+let windowState: WindowStateController | null = null
 
 async function openNotionUrl(url: unknown): Promise<boolean> {
   if (!isAllowedNotionUrl(url)) return false
@@ -239,10 +246,13 @@ function createWindow(): void {
   const savedBounds = store.get('windowBounds')
   const defaultPos = getDefaultPosition()
 
-  const windowHeight = isCollapsed ? COLLAPSED_HEIGHT : (savedBounds?.height ?? EXPANDED_HEIGHT)
+  const expandedHeight = normalizeExpandedHeight(
+    isCollapsed ? store.get('expandedHeight') : (savedBounds?.height ?? store.get('expandedHeight'))
+  )
+  const windowHeight = isCollapsed ? COLLAPSED_HEIGHT : expandedHeight
 
   // Create the browser window - 默认 400px 宽，可左右拖拽，最小 400px
-  // macOS: 使用系统 vibrancy 实现真正的背景模糊，配合 roundedCorners 避免溢出
+  // macOS owns the one outer clip, vibrancy surface, and window shadow.
   mainWindow = new BrowserWindow({
     width: savedBounds?.width ?? WINDOW_WIDTH,
     height: windowHeight,
@@ -277,28 +287,12 @@ function createWindow(): void {
     mainWindow?.show()
   })
 
-  // 窗口移动时保存位置
-  mainWindow.on('moved', () => {
-    if (mainWindow) {
-      const bounds = mainWindow.getBounds()
-      store.set('windowBounds', bounds)
-    }
-  })
-
-  // 窗口调整大小时保存尺寸
-  mainWindow.on('resize', () => {
-    if (mainWindow) {
-      const bounds = mainWindow.getBounds()
-      store.set('windowBounds', bounds)
-    }
-  })
-
-  // 窗口关闭时保存状态
-  mainWindow.on('close', () => {
-    if (mainWindow) {
-      const bounds = mainWindow.getBounds()
-      store.set('windowBounds', bounds)
-    }
+  windowState = new WindowStateController(mainWindow, { isCollapsed, expandedHeight }, (snapshot) =>
+    store.set({ ...store.store, ...snapshot })
+  )
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    windowState = null
   })
 
   // HMR for renderer base on electron-vite cli
@@ -340,51 +334,15 @@ function setupIPC(): void {
 
   // 获取窗口状态
   secureHandle('window:getState', () => {
-    return {
-      isCollapsed: store.get('isCollapsed'),
-      bounds: store.get('windowBounds')
-    }
+    if (!windowState) throw new Error('Window is closed')
+    return windowState.getState()
   })
 
-  // 设置窗口状态
-  secureHandle('window:setState', (_event, state: unknown) => {
-    if (
-      !isRecord(state) ||
-      (state.isCollapsed !== undefined && typeof state.isCollapsed !== 'boolean')
-    ) {
-      throw new Error('Invalid window state')
-    }
-    if (typeof state.isCollapsed === 'boolean') {
-      store.set('isCollapsed', state.isCollapsed)
-    }
-  })
-
-  // 切换收起/展开 - 丝滑动画
-  secureHandle('window:toggleCollapsed', () => {
-    if (!mainWindow) return false
-
-    const isCollapsed = store.get('isCollapsed')
-    const newCollapsed = !isCollapsed
-
-    // 更新存储
-    store.set('isCollapsed', newCollapsed)
-
-    // 调整窗口高度，保持当前宽度
-    const bounds = mainWindow.getBounds()
-    const newHeight = newCollapsed ? COLLAPSED_HEIGHT : Math.max(EXPANDED_HEIGHT, bounds.height)
-
-    // macOS 支持 animate 选项实现丝滑动画
-    mainWindow.setBounds(
-      {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: newHeight
-      },
-      true // macOS 启用动画
-    )
-
-    return newCollapsed
+  // Explicit desired state avoids toggle races and supports reduced motion.
+  secureHandle('window:setCollapsed', (_event, collapsed: unknown, options: unknown) => {
+    const request = parseCollapseRequest(collapsed, options)
+    if (!windowState) throw new Error('Window is closed')
+    return windowState.setCollapsed(request.collapsed, request.animate)
   })
 
   // 关闭窗口
@@ -404,7 +362,6 @@ function setupIPC(): void {
     if (!size) throw new Error('Invalid window size')
     const bounds = mainWindow.getBounds()
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, ...size })
-    store.set('windowBounds', mainWindow.getBounds())
   })
 
   // ========== Shell IPC ==========

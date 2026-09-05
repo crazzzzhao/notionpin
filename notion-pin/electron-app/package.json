@@ -27,6 +27,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:window": "npm run build && node scripts/check-window-motion.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",

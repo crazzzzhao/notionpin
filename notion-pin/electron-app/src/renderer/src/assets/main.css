@@ -12,13 +12,6 @@ body {
   overflow: hidden;
 }
 
-/* 圆角窗口 + 磨砂 */
-body {
-  border-radius: 10px;
-  overflow: hidden;
-  background: transparent;
-}
-
 /* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;

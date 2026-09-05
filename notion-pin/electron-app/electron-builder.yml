@@ -3,6 +3,8 @@ productName: Nopin
 directories:
   buildResources: build
 files:
+  # Exclude old releases and test output even when using a different output directory.
+  - '!dist{,/**/*}'
   - '!**/.vscode/*'
   - '!src/**/*'
   - '!scripts/**/*'

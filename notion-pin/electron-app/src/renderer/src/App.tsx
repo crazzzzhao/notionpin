@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useTransition, useRef } from 'react'
+import { useEffect, useState, useCallback, useSyncExternalStore } from 'react'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { ChevronDown, ChevronUp, RotateCw, X, CircleCheck, CircleX, Unplug } from 'lucide-react'
 import { TaskList } from '@/components/TaskList'
 import { SettingsModal } from '@/components/SettingsModal'
+import { createWindowCollapse } from '@/lib/windowCollapse'
 
 // 刷新 Toast - 设计稿 9kFMa (Success) / RnTAS (Error) 100% 复刻
 // padding 12 16, gap 12, cornerRadius 8, bg #fff, border #e5e5e5
@@ -111,7 +112,6 @@ interface SettingsState {
 
 function AppContent(): React.JSX.Element {
   const queryClient = useQueryClient()
-  const [isCollapsed, setIsCollapsed] = useState(false)
   const [queryControls, setQueryControls] = useState<{
     refetch: () => Promise<unknown>
     isFetching: boolean
@@ -126,6 +126,14 @@ function AppContent(): React.JSX.Element {
     type: 'success' | 'error'
     message: string
   } | null>(null)
+  const [windowCollapse] = useState(() =>
+    createWindowCollapse(
+      window.windowAPI,
+      () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      () => setRefreshToast({ type: 'error', message: 'Could not resize the window. Try again.' })
+    )
+  )
+  const isCollapsed = useSyncExternalStore(windowCollapse.subscribe, windowCollapse.getSnapshot)
   const [isLoading, setIsLoading] = useState(true)
   const [settings, setSettings] = useState<SettingsState>({
     isTokenConfigured: false,
@@ -154,7 +162,7 @@ function AppContent(): React.JSX.Element {
   useEffect(() => {
     Promise.all([window.windowAPI.getWindowState(), window.settingsAPI.load()])
       .then(([windowState, settingsData]) => {
-        setIsCollapsed(windowState.isCollapsed)
+        windowCollapse.initialize(windowState.isCollapsed)
         setSettings(settingsData)
       })
       .catch((err) => {
@@ -164,47 +172,7 @@ function AppContent(): React.JSX.Element {
       .finally(() => {
         setIsLoading(false) // 确保 loading 状态结束
       })
-  }, [])
-
-  // 切换收起/展开 - 丝滑动画
-  const [isPending, startTransition] = useTransition()
-  const [collapsing, setCollapsing] = useState(false)
-  const transitionEndHandled = useRef(false)
-
-  const handleToggle = useCallback((): void => {
-    if (isCollapsed) {
-      // 展开：先调 API，窗口变大后内容淡入
-      window.windowAPI.toggleCollapsed().then((newCollapsed) => {
-        // 使用 requestAnimationFrame 确保 DOM 更新后再触发动画
-        requestAnimationFrame(() => {
-          startTransition(() => setIsCollapsed(newCollapsed))
-        })
-      })
-    } else {
-      // 收起：先动画再调 API（由 CSS 动画驱动，onTransitionEnd 触发）
-      transitionEndHandled.current = false
-      setCollapsing(true)
-    }
-  }, [isCollapsed])
-
-  // 收起动画结束后调 API（仅 opacity transition 结束时触发一次）
-  const handleCollapseTransitionEnd = useCallback(
-    (e: React.TransitionEvent) => {
-      // 只响应 opacity 结束事件，避免多次触发
-      if (e.target !== e.currentTarget || !collapsing || e.propertyName !== 'opacity') return
-      if (transitionEndHandled.current) return
-      transitionEndHandled.current = true
-
-      // 使用 requestAnimationFrame 确保平滑过渡
-      requestAnimationFrame(() => {
-        setCollapsing(false)
-        window.windowAPI.toggleCollapsed().then((newCollapsed) => {
-          setIsCollapsed(newCollapsed)
-        })
-      })
-    },
-    [collapsing]
-  )
+  }, [windowCollapse])
 
   // 关闭
   const handleClose = (): void => {
@@ -254,13 +222,11 @@ function AppContent(): React.JSX.Element {
   }, [queryClient, loadSettings])
 
   if (isLoading) {
-    return <div className="h-full glass-panel" />
+    return <div className="h-full window-surface" />
   }
 
-  const showMain = !isCollapsed || collapsing
-
   return (
-    <div className="relative flex flex-col h-screen w-full min-w-0 text-foreground overflow-hidden glass-panel">
+    <div className="relative flex flex-col h-screen w-full min-w-0 text-foreground overflow-hidden window-surface">
       {/* Header - 设计稿 .title-bar 48px */}
       <header
         className="flex items-center justify-between h-12 px-4 shrink-0"
@@ -296,8 +262,9 @@ function AppContent(): React.JSX.Element {
             variant="ghost"
             size="icon"
             className="h-5 w-5 rounded"
-            onClick={handleToggle}
-            disabled={isPending || collapsing}
+            onClick={() => void windowCollapse.toggle()}
+            aria-expanded={!isCollapsed}
+            aria-controls="window-content"
             title={isCollapsed ? 'Expand' : 'Collapse'}
             aria-label={isCollapsed ? 'Expand' : 'Collapse'}
           >
@@ -320,45 +287,40 @@ function AppContent(): React.JSX.Element {
         </div>
       </header>
 
-      {/* 内容区 - 展开时显示，收起时丝滑动画 */}
-      {showMain && (
-        <main
-          className="flex-1 flex flex-col overflow-hidden transition-smooth"
-          style={{
-            opacity: collapsing ? 0 : 1,
-            transform: collapsing
-              ? 'translateY(-4px) scale(0.98) translateZ(0)'
-              : 'translateY(0) scale(1) translateZ(0)'
-          }}
-          onTransitionEnd={handleCollapseTransitionEnd}
-        >
-          {/* 未连接状态 - 友好的引导 UI */}
-          {!settings.isTokenConfigured ? (
-            <div className="flex-1 overflow-hidden">
-              <NotConnectedState onOpenSettings={handleOpenSettings} />
-            </div>
-          ) : (
-            /* 任务列表 - 已配置时显示 */
-            <div className="flex-1 overflow-hidden">
-              <TaskList
-                isConfigured={settings.isTokenConfigured}
-                fieldMapping={settings.fieldMapping}
-                onOpenSettings={handleOpenSettings}
-                onQueryReady={handleQueryReady}
-              />
-            </div>
-          )}
-
-          {/* 刷新完成 Toast */}
-          {refreshToast && (
-            <RefreshToast
-              type={refreshToast.type}
-              message={refreshToast.message}
-              onDismiss={() => setRefreshToast(null)}
+      {/* Keep content mounted so reversing motion never resets list/scroll state. */}
+      <main
+        id="window-content"
+        className="flex-1 min-h-0 flex flex-col overflow-hidden window-content"
+        data-collapsed={isCollapsed}
+        inert={isCollapsed}
+        aria-hidden={isCollapsed}
+      >
+        {/* 未连接状态 - 友好的引导 UI */}
+        {!settings.isTokenConfigured ? (
+          <div className="flex-1 overflow-hidden">
+            <NotConnectedState onOpenSettings={handleOpenSettings} />
+          </div>
+        ) : (
+          /* 任务列表 - 已配置时显示 */
+          <div className="flex-1 overflow-hidden">
+            <TaskList
+              isConfigured={settings.isTokenConfigured}
+              fieldMapping={settings.fieldMapping}
+              onOpenSettings={handleOpenSettings}
+              onQueryReady={handleQueryReady}
             />
-          )}
-        </main>
-      )}
+          </div>
+        )}
+
+        {/* 刷新完成 Toast */}
+        {refreshToast && (
+          <RefreshToast
+            type={refreshToast.type}
+            message={refreshToast.message}
+            onDismiss={() => setRefreshToast(null)}
+          />
+        )}
+      </main>
 
       {/* Settings Dialog */}
       <SettingsModal

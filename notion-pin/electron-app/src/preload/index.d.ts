@@ -1,13 +1,13 @@
 import type { StatusFilterKey } from '../shared/statusFilters'
+import type { WindowTransitionOptions } from '../shared/windowState'
 export type { StatusFilterKey } from '../shared/statusFilters'
 
 export interface WindowAPI {
-  toggleCollapsed: () => Promise<boolean>
+  setCollapsed: (collapsed: boolean, options?: WindowTransitionOptions) => Promise<boolean>
   getWindowState: () => Promise<{
     isCollapsed: boolean
     bounds: { x: number; y: number; width: number; height: number } | null
   }>
-  setWindowState: (state: { isCollapsed?: boolean }) => Promise<void>
   close: () => Promise<void>
   minimize: () => Promise<void>
   resize: (width: number, height: number) => Promise<void>

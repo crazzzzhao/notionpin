@@ -11,6 +11,11 @@ export default defineConfig(
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
   {
+    // Node build/test helpers are JavaScript, which cannot use TS return annotations.
+    files: ['scripts/**/*.mjs'],
+    rules: { '@typescript-eslint/explicit-function-return-type': 'off' }
+  },
+  {
     settings: {
       react: {
         version: 'detect'
