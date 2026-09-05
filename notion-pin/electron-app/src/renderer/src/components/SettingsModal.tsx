@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
@@ -52,19 +52,24 @@ function FieldSelect({
   placeholder = 'Select a field...',
   icon
 }: FieldSelectProps): React.JSX.Element {
+  const id = useId()
   const filteredOptions = options.filter((p) => filterTypes.includes(p.type))
 
   return (
-    <div className="space-y-1.5">
-      <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+    <div className="space-y-2">
+      <label
+        htmlFor={id}
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
+      >
         <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>
         {label}
       </label>
       <div className="relative">
         <select
+          id={id}
           value={value || ''}
           onChange={(e) => onChange(e.target.value || null)}
-          className="w-full px-3 py-2 pr-8 text-sm border border-input rounded-md bg-background appearance-none focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+          className="w-full h-10 ps-3 pe-9 text-[13px] border border-input rounded-xl bg-popover appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
         >
           <option value="">{placeholder}</option>
           {filteredOptions.map((prop) => (
@@ -73,7 +78,10 @@ function FieldSelect({
             </option>
           ))}
         </select>
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <ChevronDown
+          aria-hidden="true"
+          className="absolute end-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+        />
       </div>
       {filteredOptions.length === 0 && (
         <p className="text-xs text-amber-600">No {filterTypes.join('/')} type fields in database</p>
@@ -322,7 +330,7 @@ export function SettingsModal({
 
   const contentPanel = (
     <div
-      className="relative rounded-2xl overflow-hidden flex flex-col animate-in fade-in-0 zoom-in-95 duration-200 w-[290px] max-w-[calc(100%-32px)] mx-4"
+      className="settings-panel relative rounded-2xl overflow-hidden flex flex-col animate-in fade-in-0 zoom-in-95 duration-200 w-[290px]"
       style={{
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(50px)',
@@ -333,218 +341,220 @@ export function SettingsModal({
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {/* Header - 设计稿: padding [18,20], border-bottom 1px, shadow */}
-      <div
-        className="flex items-center justify-between px-5 py-[18px] shrink-0 relative z-10 border-b border-border"
-        style={{
-          boxShadow: '0 1px 4px -1px rgba(0, 0, 0, 0.06)'
-        }}
-      >
-        <h2 className="text-[15px] font-semibold text-foreground">Settings</h2>
-        <button
-          onClick={handleCancel}
-          className="w-[28px] h-[28px] rounded-lg flex items-center justify-center hover:opacity-80 transition-opacity"
-          style={{ background: 'rgba(255,255,255,0.25)' }}
-          aria-label="Close"
-        >
-          <X className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-      </div>
+      {/* Scroll the entire content region at high zoom; actions stay outside it. */}
+      <div className="settings-scroll min-h-0 overflow-y-auto overscroll-contain">
+        <div className="settings-header flex items-center justify-between gap-3 px-5 py-4">
+          <h2 className="min-w-0 wrap-anywhere text-[15px] font-semibold text-foreground">
+            Settings
+          </h2>
+          <button
+            onClick={handleCancel}
+            className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center hover:opacity-80 transition-opacity"
+            style={{ background: 'rgba(255,255,255,0.25)' }}
+            aria-label="Close"
+          >
+            <X className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
 
-      {/* Tabs: Connection | Field Mapping */}
-      <div className="px-4 pt-3 pb-2">
-        <AnimatedTabs
-          tabs={tabs}
-          activeValue={activeTab}
-          onTabChange={(v) => setActiveTab(v as TabValue)}
-        />
-      </div>
+        {/* Tabs: Connection | Field Mapping */}
+        <div className="settings-tabs px-5">
+          <AnimatedTabs
+            tabs={tabs}
+            activeValue={activeTab}
+            onTabChange={(v) => setActiveTab(v as TabValue)}
+          />
+        </div>
 
-      {/* Tab Content - 设计稿: padding [20, 16, 12, 20], gap 20 */}
-      <div className="space-y-5 flex-1 min-h-0" style={{ padding: '20px 16px 12px 20px' }}>
-        {errors.general && (
-          <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
-            {errors.general}
-          </div>
-        )}
+        {/* 8px within a field, 24px between groups; avoid stacked footer padding. */}
+        <div className="settings-body space-y-6 px-5 pt-5 pb-2 wrap-anywhere">
+          {errors.general && (
+            <div className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm">
+              {errors.general}
+            </div>
+          )}
 
-        {activeTab === 'connection' && (
-          <>
-            <div className="space-y-2">
-              <label htmlFor="notion-token" className="text-xs font-medium text-muted-foreground">
-                Notion Token
-              </label>
-              <div
-                className="relative"
-                onMouseEnter={() => setIsTokenHovered(true)}
-                onMouseLeave={() => setIsTokenHovered(false)}
-              >
+          {activeTab === 'connection' && (
+            <>
+              <div className="space-y-2">
+                <label
+                  htmlFor="notion-token"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Notion Token
+                </label>
+                <div
+                  className="relative"
+                  onMouseEnter={() => setIsTokenHovered(true)}
+                  onMouseLeave={() => setIsTokenHovered(false)}
+                >
+                  <input
+                    id="notion-token"
+                    type={isTokenVisible ? 'text' : 'password'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder={
+                      isTokenConfigured ? 'Token is stored securely' : 'secret_xxx or ntn_xxx'
+                    }
+                    autoComplete="off"
+                    className={`w-full h-10 ps-3 ${token ? 'pe-20' : 'pe-10'} text-[13px] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+                    style={{
+                      background: 'rgba(255,255,255,0.25)',
+                      border: '0.5px solid rgba(255,255,255,0.5)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+                    }}
+                  />
+                  {/* Icons Wrapper - 设计稿: gap 4 */}
+                  <div className="absolute end-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {/* 复制按钮 - hover 时显示 */}
+                    {token && isTokenHovered && (
+                      <button
+                        type="button"
+                        onClick={handleCopyToken}
+                        className="p-1 rounded hover:bg-black/5 transition-colors"
+                        title={isTokenCopied ? 'Token copied' : 'Copy token'}
+                      >
+                        {isTokenCopied ? (
+                          <Check className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    )}
+                    {/* 眼睛图标 - 始终显示 */}
+                    <button
+                      type="button"
+                      onClick={() => setIsTokenVisible(!isTokenVisible)}
+                      className="p-1 rounded hover:bg-black/5 transition-colors"
+                      title={isTokenVisible ? 'Hide token' : 'Show token'}
+                    >
+                      {isTokenVisible ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {errors.token && <p className="text-xs text-destructive">{errors.token}</p>}
+                <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
+                  Internal Integration Token
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="notion-database-url"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Database URL
+                </label>
                 <input
-                  id="notion-token"
-                  type={isTokenVisible ? 'text' : 'password'}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder={
-                    isTokenConfigured ? 'Token is stored securely' : 'secret_xxx or ntn_xxx'
-                  }
-                  autoComplete="off"
-                  className="w-full h-10 px-3.5 pr-20 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
+                  id="notion-database-url"
+                  type="text"
+                  value={databaseUrl}
+                  onChange={(e) => setDatabaseUrl(e.target.value)}
+                  placeholder="https://notion.so/..."
+                  className="w-full h-10 px-3 text-[13px] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   style={{
                     background: 'rgba(255,255,255,0.25)',
                     border: '0.5px solid rgba(255,255,255,0.5)',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                   }}
                 />
-                {/* Icons Wrapper - 设计稿: gap 4 */}
-                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {/* 复制按钮 - hover 时显示 */}
-                  {token && isTokenHovered && (
-                    <button
-                      type="button"
-                      onClick={handleCopyToken}
-                      className="p-1 rounded hover:bg-black/5 transition-colors"
-                      title={isTokenCopied ? 'Token copied' : 'Copy token'}
-                    >
-                      {isTokenCopied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-                  )}
-                  {/* 眼睛图标 - 始终显示 */}
-                  <button
-                    type="button"
-                    onClick={() => setIsTokenVisible(!isTokenVisible)}
-                    className="p-1 rounded hover:bg-black/5 transition-colors"
-                    title={isTokenVisible ? 'Hide token' : 'Show token'}
-                  >
-                    {isTokenVisible ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                {errors.databaseUrl && (
+                  <p className="text-xs text-destructive">{errors.databaseUrl}</p>
+                )}
+                {!databaseUrl && (
+                  <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
+                    Paste Notion Database link
+                  </p>
+                )}
+                {databaseUrl && (
+                  <div className="text-xs">
+                    {parsedId ? (
+                      <div className="flex items-center gap-1">
+                        <Check className="h-4 w-4 shrink-0 text-green-600" />
+                        <span className="text-green-600">
+                          Database ID: {parsedId.slice(0, 8)}...
+                        </span>
+                      </div>
                     ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-amber-600">⚠ Cannot parse Database ID</span>
                     )}
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
-              {errors.token && <p className="text-xs text-destructive">{errors.token}</p>}
-              <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
-                Internal Integration Token
-              </p>
-            </div>
+            </>
+          )}
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Database URL</label>
-              <input
-                type="text"
-                value={databaseUrl}
-                onChange={(e) => setDatabaseUrl(e.target.value)}
-                placeholder="https://notion.so/..."
-                className="w-full h-10 px-3.5 py-3 text-[13px] rounded-xl focus:outline-none focus:ring-2 focus:ring-ring"
-                style={{
-                  background: 'rgba(255,255,255,0.25)',
-                  border: '0.5px solid rgba(255,255,255,0.5)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-                }}
-              />
-              {errors.databaseUrl && (
-                <p className="text-xs text-destructive">{errors.databaseUrl}</p>
-              )}
-              <p className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
-                Paste Notion Database link
-              </p>
-              {databaseUrl && (
-                <div className="text-xs">
-                  {parsedId ? (
-                    <div className="flex items-center gap-1">
-                      <Check className="h-4 w-4 text-green-600" />
-                      <span className="text-green-600">Database ID: {parsedId.slice(0, 8)}...</span>
-                    </div>
-                  ) : (
-                    <span className="text-amber-600">⚠ Cannot parse Database ID</span>
-                  )}
+          {activeTab === 'field-mapping' && (
+            <div className="space-y-6">
+              {!dataSourceId ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <p className="text-xs text-amber-700">Save & Verify in Connection first</p>
                 </div>
-              )}
+              ) : isLoadingSchema ? (
+                <p className="text-xs text-muted-foreground">Loading database schema...</p>
+              ) : schemaError ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-destructive">{schemaError}</p>
+                  <Button variant="outline" size="sm" onClick={loadSchema}>
+                    Retry
+                  </Button>
+                </div>
+              ) : schema.length > 0 ? (
+                <>
+                  <FieldSelect
+                    label="Text"
+                    icon={<Type className="h-4 w-4 shrink-0" strokeWidth={1.5} />}
+                    value={fieldMapping.textPropertyId}
+                    options={schema}
+                    filterTypes={['title', 'rich_text']}
+                    typeLabel="Text"
+                    onChange={(v) => setFieldMapping((prev) => ({ ...prev, textPropertyId: v }))}
+                  />
+                  <FieldSelect
+                    label="Status"
+                    icon={<Loader className="h-4 w-4 shrink-0" strokeWidth={1.5} />}
+                    value={fieldMapping.statusPropertyId}
+                    options={schema}
+                    filterTypes={['status']}
+                    typeLabel="Status"
+                    onChange={(v) => setFieldMapping((prev) => ({ ...prev, statusPropertyId: v }))}
+                  />
+                  <FieldSelect
+                    label="Date"
+                    icon={<Calendar className="h-4 w-4 shrink-0" strokeWidth={1.5} />}
+                    value={fieldMapping.timePropertyId}
+                    options={schema}
+                    filterTypes={['date']}
+                    typeLabel="Date"
+                    onChange={(v) => setFieldMapping((prev) => ({ ...prev, timePropertyId: v }))}
+                  />
+                </>
+              ) : null}
             </div>
-          </>
-        )}
-
-        {activeTab === 'field-mapping' && (
-          <div className="space-y-4">
-            {!dataSourceId ? (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
-                <p className="text-xs text-amber-700">Save & Verify in Connection first</p>
-              </div>
-            ) : isLoadingSchema ? (
-              <p className="text-xs text-muted-foreground">Loading database schema...</p>
-            ) : schemaError ? (
-              <div className="space-y-2">
-                <p className="text-xs text-destructive">{schemaError}</p>
-                <Button variant="outline" size="sm" onClick={loadSchema}>
-                  Retry
-                </Button>
-              </div>
-            ) : schema.length > 0 ? (
-              <>
-                <FieldSelect
-                  label="Text"
-                  icon={<Type className="h-4 w-4 shrink-0" />}
-                  value={fieldMapping.textPropertyId}
-                  options={schema}
-                  filterTypes={['title', 'rich_text']}
-                  typeLabel="Text"
-                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, textPropertyId: v }))}
-                />
-                <FieldSelect
-                  label="Status"
-                  icon={<Loader className="h-4 w-4 shrink-0" />}
-                  value={fieldMapping.statusPropertyId}
-                  options={schema}
-                  filterTypes={['status']}
-                  typeLabel="Status"
-                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, statusPropertyId: v }))}
-                />
-                <FieldSelect
-                  label="Date"
-                  icon={<Calendar className="h-4 w-4 shrink-0" />}
-                  value={fieldMapping.timePropertyId}
-                  options={schema}
-                  filterTypes={['date']}
-                  typeLabel="Date"
-                  onChange={(v) => setFieldMapping((prev) => ({ ...prev, timePropertyId: v }))}
-                />
-              </>
-            ) : null}
-          </div>
-        )}
+          )}
+          {activeTab === 'connection' && isTokenConfigured && (
+            <button
+              type="button"
+              onClick={() => setShowDisconnectConfirm(true)}
+              className="settings-disconnect flex min-h-8 w-full items-center justify-center gap-2 rounded-full border border-destructive/15 bg-destructive/5 px-3 py-1 text-center text-xs text-destructive hover:bg-destructive/10 transition-colors duration-150"
+            >
+              <Unlink aria-hidden="true" className="h-4 w-4 shrink-0" />
+              Disconnect your Notion
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Disconnect Notion - 设计稿: padding [0, 16, 0, 20], gap 4, 独立块 */}
-      {activeTab === 'connection' && isTokenConfigured && (
-        <div className="flex items-center gap-1" style={{ padding: '0 16px 0 20px' }}>
-          <Unlink className="h-4 w-4 text-destructive" />
-          <button
-            type="button"
-            onClick={() => setShowDisconnectConfirm(true)}
-            className="text-xs text-destructive hover:text-destructive/80 transition-colors"
-          >
-            Disconnect your Notion
-          </button>
-        </div>
-      )}
-
-      {/* Footer - 设计稿: padding [16,20], gap 10, stroke top 0.5px */}
-      <div
-        className="flex justify-end gap-2.5 px-5 py-4 shrink-0"
-        style={{
-          borderTop: '0.5px solid rgba(255, 255, 255, 0.5)'
-        }}
-      >
+      <div className="settings-actions flex flex-wrap justify-end gap-3 px-5 py-4 shrink-0">
         <Button
           variant="outline"
           size="sm"
-          className="h-9 px-[18px] rounded-lg text-[13px] font-medium"
+          className="h-auto min-h-9 max-w-full px-[18px] rounded-full text-[13px] font-medium"
           style={{
             background: 'rgba(255,255,255,0.25)',
             border: '0.5px solid rgba(255,255,255,0.5)'
@@ -556,7 +566,7 @@ export function SettingsModal({
         {activeTab === 'connection' && (
           <Button
             size="sm"
-            className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
+            className="h-auto min-h-9 max-w-full px-[18px] rounded-full text-[13px] font-medium text-white"
             style={{
               background: '#007AFF',
               boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
@@ -570,7 +580,7 @@ export function SettingsModal({
         {activeTab === 'field-mapping' && (
           <Button
             size="sm"
-            className="h-9 px-[18px] rounded-lg text-[13px] font-medium text-white"
+            className="h-auto min-h-9 max-w-full px-[18px] rounded-full text-[13px] font-medium text-white"
             style={{
               background: '#007AFF',
               boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
@@ -588,7 +598,7 @@ export function SettingsModal({
       {/* Token Copied Toast */}
       {isTokenCopied && (
         <div
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2"
+          className="absolute bottom-20 inset-x-4 mx-auto w-fit max-w-[calc(100%_-_32px)] z-50 flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2"
           style={{
             padding: '8px 12px',
             borderRadius: 8,
@@ -598,7 +608,7 @@ export function SettingsModal({
           }}
         >
           <Check className="h-4 w-4 text-green-600" />
-          <span className="text-xs text-muted-foreground">Token copied</span>
+          <span className="min-w-0 wrap-anywhere text-xs text-muted-foreground">Token copied</span>
         </div>
       )}
 
@@ -612,7 +622,7 @@ export function SettingsModal({
           />
           {/* 对话框 */}
           <div
-            className="relative z-10 w-[250px] rounded-xl p-5 animate-in fade-in-0 zoom-in-95 duration-150"
+            className="settings-confirm-panel relative z-10 flex flex-col w-[250px] max-w-[calc(100%_-_32px)] max-h-[calc(100%_-_32px)] rounded-xl animate-in fade-in-0 zoom-in-95 duration-150"
             style={{
               background: 'rgba(255, 255, 255, 0.98)',
               backdropFilter: 'blur(20px)',
@@ -620,15 +630,17 @@ export function SettingsModal({
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
             }}
           >
-            <h3 className="text-[15px] font-semibold text-foreground mb-2">Disconnect Notion?</h3>
-            <p className="text-[13px] text-muted-foreground mb-5">
-              Your token and database will be removed. You can reconnect anytime.
-            </p>
-            <div className="flex justify-end gap-2">
+            <div className="min-h-0 overflow-y-auto overscroll-contain p-4 pb-1 space-y-2 wrap-anywhere">
+              <h3 className="text-[15px] font-semibold text-foreground">Disconnect Notion?</h3>
+              <p className="text-[13px] text-muted-foreground">
+                Your token and database will be removed. You can reconnect anytime.
+              </p>
+            </div>
+            <div className="settings-confirm-actions flex flex-wrap justify-end gap-3 p-4 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-3 rounded-lg text-[13px] font-medium"
+                className="h-auto min-h-8 max-w-full px-3 rounded-full text-[13px] font-medium"
                 style={{
                   background: 'rgba(255,255,255,0.5)',
                   border: '0.5px solid rgba(0,0,0,0.1)'
@@ -640,7 +652,7 @@ export function SettingsModal({
               </Button>
               <Button
                 size="sm"
-                className="h-8 px-3 rounded-lg text-[13px] font-medium text-white"
+                className="h-auto min-h-8 max-w-full px-3 rounded-full text-[13px] font-medium text-white"
                 style={{
                   background: '#d44c47',
                   boxShadow: '0 1px 3px rgba(212,76,71,0.3)'

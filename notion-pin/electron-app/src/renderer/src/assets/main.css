@@ -14,7 +14,7 @@ body {
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: var(--nopin-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {

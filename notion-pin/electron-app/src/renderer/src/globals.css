@@ -5,7 +5,7 @@
   --color-foreground: hsl(222.2 84% 4.9%);
   --color-card: hsl(0 0% 100% / 0.6);
   --color-card-foreground: hsl(222.2 84% 4.9%);
-  --color-popover: hsl(0 0% 100% / 0.85);
+  --color-popover: hsl(0 0% 100%);
   --color-popover-foreground: hsl(222.2 84% 4.9%);
   --color-primary: hsl(222.2 47.4% 11.2%);
   --color-primary-foreground: hsl(210 40% 98%);
@@ -24,11 +24,12 @@
 }
 
 :root {
+  --nopin-scrollbar-width: 6px;
   --background: 0 0% 100% / 0.72;
   --foreground: 222.2 84% 4.9%;
   --card: 0 0% 100% / 0.6;
   --card-foreground: 222.2 84% 4.9%;
-  --popover: 0 0% 100% / 0.85;
+  --popover: 0 0% 100%;
   --popover-foreground: 222.2 84% 4.9%;
   --primary: 222.2 47.4% 11.2%;
   --primary-foreground: 210 40% 98%;
@@ -124,6 +125,71 @@ html[data-browser-preview='true'] .window-surface {
 .window-content[data-collapsed='true'] {
   opacity: 0;
   pointer-events: none;
+}
+
+/* Reserve the scrollbar consistently, inside the shared content inset. */
+.task-scroll,
+.settings-scroll {
+  scrollbar-gutter: stable;
+}
+
+.task-scroll {
+  padding-inline-end: calc(8px - var(--nopin-scrollbar-width));
+}
+
+.settings-scroll > * {
+  padding-inline-end: calc(20px - var(--nopin-scrollbar-width));
+}
+
+.settings-panel {
+  --dialog-inset: min(16px, 4vmin);
+  max-width: calc(100vw - 2 * var(--dialog-inset));
+  max-height: calc(100dvh - 2 * var(--dialog-inset));
+  margin-inline: var(--dialog-inset);
+}
+
+.task-filters {
+  container-name: task-filters;
+  container-type: inline-size;
+}
+
+/* Four full labels stop fitting below this content width; do not shrink their type. */
+@container task-filters (max-width: 332px) {
+  .task-tabs {
+    padding-block: 4px;
+  }
+
+  .animated-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .animated-tabs button {
+    padding-inline: 2px;
+  }
+}
+
+/* Native collapse can leave fewer CSS pixels available when the page is zoomed. */
+.window-header {
+  height: min(48px, 100dvh);
+}
+
+/* State views share a spacing rhythm and remain scrollable in short windows. */
+.state-screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 8px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.app-toast {
+  max-height: calc(100dvh - 112px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

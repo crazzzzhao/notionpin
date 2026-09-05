@@ -2,12 +2,11 @@ import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { AnimatedTabs } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
+import { TaskStatusSelect, type StatusOptionWithColor } from '@/components/TaskStatusSelect'
 import {
   ExternalLink,
   Check,
   X,
-  ChevronDown,
   LoaderCircle,
   Inbox,
   CircleAlert,
@@ -59,9 +58,6 @@ const DEFAULT_STATUS_OPTIONS = [
   { value: 'Done', label: 'Done', bg: '#0f7b6c20', text: '#0f7b6c' }
 ]
 
-// ========== 状态选项类型（含 hex 颜色） ==========
-type StatusOptionWithColor = { value: string; label: string; bg: string; text: string }
-
 // ========== 任务项组件 ==========
 
 interface TaskItemProps {
@@ -82,22 +78,7 @@ function TaskItem({
   // 编辑状态
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
-  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const statusRef = useRef<HTMLDivElement>(null)
-
-  // 点击外部关闭 status dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent): void => {
-      if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
-        setShowStatusDropdown(false)
-      }
-    }
-    if (showStatusDropdown) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showStatusDropdown])
 
   // Title 编辑开始时聚焦
   useEffect(() => {
@@ -145,7 +126,6 @@ function TaskItem({
     if (newStatus !== task.status) {
       onUpdate(task.id, [{ field: 'status', value: newStatus }])
     }
-    setShowStatusDropdown(false)
   }
 
   // ========== Due 编辑 ==========
@@ -214,14 +194,12 @@ function TaskItem({
 
   return (
     <div
-      className={`group relative rounded-lg transition-colors ${isUpdating ? 'opacity-70' : ''}`}
+      className={`task-row group relative rounded-lg transition-colors ${isUpdating ? 'opacity-70' : ''}`}
     >
-      {/* 设计稿 .task-item: padding 12, vertical layout */}
-      <div className="flex flex-col gap-1.5 p-3 rounded-lg hover:bg-muted/30">
-        {/* .task-content: gap 6 */}
-        <div className="flex flex-col gap-1.5">
-          {/* .task-title: 14px, 500, lineHeight 1.4 */}
-          <div className="flex items-start gap-1 min-w-0">
+      {/* List inset 8px + row inset 8px aligns content with the 16px header/tabs. */}
+      <div className="flex flex-col p-2 rounded-lg hover:bg-muted/30">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 min-w-0 min-h-6">
             {isEditingTitle ? (
               <div className="flex-1 flex items-center gap-1 min-w-0">
                 <input
@@ -233,27 +211,36 @@ function TaskItem({
                   onBlur={handleTitleSave}
                   className="flex-1 px-1.5 py-0.5 text-sm border border-ring rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring min-w-0"
                 />
-                <button onClick={handleTitleSave} className="p-0.5 rounded hover:bg-muted">
+                <button
+                  onClick={handleTitleSave}
+                  aria-label="Save title"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-muted"
+                >
                   <Check className="h-3 w-3 text-green-600" />
                 </button>
-                <button onClick={handleTitleCancel} className="p-0.5 rounded hover:bg-muted">
+                <button
+                  onClick={handleTitleCancel}
+                  aria-label="Cancel title edit"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-muted"
+                >
                   <X className="h-3 w-3 text-muted-foreground" />
                 </button>
               </div>
             ) : (
               <div className="flex-1 flex items-center gap-1.5 min-w-0">
-                <p
-                  className="flex-1 text-sm font-medium leading-[1.4] truncate min-w-0 cursor-pointer hover:text-foreground/80"
+                <button
+                  type="button"
+                  className="task-title flex-1 text-start text-sm font-medium leading-5 truncate min-w-0 cursor-pointer hover:text-foreground/80"
                   title={`Click to edit: ${task.title}`}
                   onClick={handleTitleClick}
                 >
                   {task.title}
-                </p>
+                </button>
               </div>
             )}
             <button
               onClick={handleOpenInNotion}
-              className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted transition-opacity"
+              className="flex h-6 w-6 items-center justify-center shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 rounded hover:bg-muted transition-opacity duration-150"
               title="Open in Notion"
               aria-label={`Open in Notion: ${task.title}`}
             >
@@ -261,47 +248,14 @@ function TaskItem({
             </button>
           </div>
 
-          {/* .task-meta: gap 8, status + due */}
-          <div className="flex items-center gap-2">
-            {/* .task-status: cornerRadius 4, padding 2 6 */}
-            <div className="relative" ref={statusRef}>
-              <button
-                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-opacity cursor-pointer hover:opacity-80"
-                style={{ background: statusStyle.bg, color: statusStyle.text }}
-                title="Click to change status"
-              >
-                {task.status || 'No status'}
-                <ChevronDown className="h-3 w-3" />
-              </button>
-              {showStatusDropdown && (
-                <div
-                  className="absolute left-0 top-full mt-1 z-50 border border-border rounded-md shadow-lg py-1 min-w-[120px]"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(24px)',
-                    WebkitBackdropFilter: 'blur(24px)'
-                  }}
-                >
-                  {statusOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleStatusChange(opt.value)}
-                      className={`w-full px-3 py-1.5 text-xs text-left hover:bg-muted/50 transition-colors ${
-                        task.status === opt.value ? 'font-medium' : ''
-                      }`}
-                    >
-                      <span
-                        className="inline-block px-1.5 py-0.5 rounded"
-                        style={{ background: opt.bg, color: opt.text }}
-                      >
-                        {opt.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          {/* Status and date share a 24px line box and an 8px gap. */}
+          <div className="task-meta flex flex-wrap items-center gap-x-2 gap-y-1">
+            <TaskStatusSelect
+              value={task.status}
+              options={statusOptions}
+              style={statusStyle}
+              onChange={handleStatusChange}
+            />
             {/* .task-due: 12px, 设计稿 muted-foreground */}
             {isEditingDue ? (
               <input
@@ -310,25 +264,26 @@ function TaskItem({
                 onChange={handleDueChange}
                 onBlur={() => setIsEditingDue(false)}
                 autoFocus
-                className={`min-w-0 text-xs border border-ring rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring ${getDueColor(
+                className={`min-w-0 max-w-full text-xs border border-ring rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring ${getDueColor(
                   task.due
                 )}`}
               />
             ) : (
-              <span
+              <button
+                type="button"
                 onClick={() => setIsEditingDue(true)}
-                className={`text-xs ${getDueColor(task.due)} cursor-pointer hover:opacity-80 transition-opacity`}
+                className={`flex min-w-6 min-h-6 shrink-0 items-center text-xs ${getDueColor(task.due)} cursor-pointer hover:opacity-80 transition-opacity`}
                 title="Click to set due date"
               >
                 {task.due ? formatDue(task.due) : <span className="text-muted-foreground">—</span>}
-              </span>
+              </button>
             )}
           </div>
         </div>
       </div>
 
       {updateError && (
-        <div className="absolute left-0 right-0 bottom-full mb-1 p-2 bg-destructive/10 text-destructive text-xs rounded">
+        <div className="mb-2 p-2 bg-destructive/10 text-destructive text-xs rounded wrap-anywhere">
           {updateError.userMessage}
         </div>
       )}
@@ -350,37 +305,39 @@ function ErrorDisplay({ error, onRetry, onOpenSettings }: ErrorDisplayProps): Re
   const isMappingError = error.code === 'mapping_not_configured' || error.code === 'mapping_invalid'
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 px-5">
+    <div className="state-screen">
       <CircleAlert className="h-8 w-8 shrink-0" style={{ color: '#FF3B30' }} />
-      <p className="text-xs font-medium text-center" style={{ color: '#FF3B30' }}>
-        {isMappingError ? 'Please configure field mapping' : 'Failed to load tasks'}
-      </p>
-      <p className="text-xs text-muted-foreground text-center whitespace-pre-wrap">
-        {error.userMessage}
-      </p>
+      <div className="w-full space-y-2">
+        <p className="text-xs font-medium text-center" style={{ color: '#FF3B30' }}>
+          {isMappingError ? 'Please configure field mapping' : 'Failed to load tasks'}
+        </p>
+        <p className="text-xs text-muted-foreground text-center whitespace-pre-wrap">
+          {error.userMessage}
+        </p>
+        {isPermissionError && (
+          <p className="text-xs text-amber-600 text-center">
+            💡 Notion → ••• → Add connections → 选择 Integration
+          </p>
+        )}
+        {error.code === 'rate_limited' && error.retryAfter && (
+          <p className="text-xs text-amber-600">⏱ Retry after {error.retryAfter}s</p>
+        )}
+      </div>
       {isMappingError && onOpenSettings && (
         <Button
           variant="outline"
           size="sm"
-          className="h-9 px-[18px] rounded-lg text-[13px] font-medium bg-white/25 border-white/50"
+          className="min-h-9 max-w-full px-[18px] text-[13px] font-medium bg-white/25 border-white/50"
           onClick={onOpenSettings}
         >
           Go to Field Mapping
         </Button>
       )}
-      {isPermissionError && (
-        <p className="text-xs text-amber-600 text-center">
-          💡 Notion → ••• → Add connections → 选择 Integration
-        </p>
-      )}
-      {error.code === 'rate_limited' && error.retryAfter && (
-        <p className="text-xs text-amber-600">⏱ Retry after {error.retryAfter}s</p>
-      )}
       {!isMappingError && (
         <Button
           variant="outline"
           size="sm"
-          className="h-9 px-[18px] rounded-lg text-[13px] font-medium bg-white/25 border-white/50"
+          className="min-h-9 max-w-full px-[18px] text-[13px] font-medium bg-white/25 border-white/50"
           onClick={onRetry}
         >
           Retry
@@ -405,8 +362,8 @@ function EmptyState({ statusFilter }: EmptyStateProps): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16">
-      <Inbox className="h-8 w-8 text-muted-foreground opacity-50" />
+    <div className="state-screen">
+      <Inbox className="h-8 w-8 shrink-0 text-muted-foreground opacity-50" />
       <span className="text-[13px] font-medium text-muted-foreground">
         {messages[statusFilter]}
       </span>
@@ -418,7 +375,7 @@ function EmptyState({ statusFilter }: EmptyStateProps): React.JSX.Element {
 
 function LoadingState(): React.JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16">
+    <div className="state-screen">
       <LoaderCircle className="h-6 w-6 animate-spin shrink-0" style={{ color: '#007AFF' }} />
       <span className="text-[13px] font-medium" style={{ color: '#737373' }}>
         Loading...
@@ -427,7 +384,7 @@ function LoadingState(): React.JSX.Element {
   )
 }
 
-// ========== Tab 组件 - 设计稿 .tabs-container padding 12 16 16 16 ==========
+// ========== Tab 组件 ==========
 
 interface TaskTabsProps {
   activeTab: StatusFilterKey
@@ -438,12 +395,14 @@ function TaskTabs({ activeTab, onTabChange }: TaskTabsProps): React.JSX.Element 
   const tabItems = TABS.map((t) => ({ title: t.label, value: t.key }))
 
   return (
-    <div className="px-4 pt-3 pb-4 shrink-0 relative z-10">
-      <AnimatedTabs
-        tabs={tabItems}
-        activeValue={activeTab}
-        onTabChange={(v) => onTabChange(v as StatusFilterKey)}
-      />
+    <div className="task-filters shrink-0 relative z-10">
+      <div className="task-tabs px-4 py-2">
+        <AnimatedTabs
+          tabs={tabItems}
+          activeValue={activeTab}
+          onTabChange={(v) => onTabChange(v as StatusFilterKey)}
+        />
+      </div>
     </div>
   )
 }
@@ -468,7 +427,7 @@ function SonnerToast({ type, onDismiss }: SonnerToastProps): React.JSX.Element {
   const isSuccess = type === 'success'
   return (
     <div
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center animate-in slide-in-from-bottom-2"
+      className="app-toast fixed bottom-14 inset-x-4 mx-auto w-fit max-w-[calc(100vw_-_32px)] z-40 flex items-start animate-in slide-in-from-bottom-2"
       style={{
         padding: '12px 16px',
         gap: 12,
@@ -483,7 +442,7 @@ function SonnerToast({ type, onDismiss }: SonnerToastProps): React.JSX.Element {
       ) : (
         <CircleX className="h-[18px] w-[18px] shrink-0" style={{ color: '#d44c47' }} />
       )}
-      <span style={{ fontSize: 12, color: '#737373', fontFamily: 'Inter, sans-serif' }}>
+      <span className="min-w-0" style={{ fontSize: 12, color: '#737373' }}>
         {isSuccess ? 'Changes saved successfully' : 'Failed to update task'}
       </span>
     </div>
@@ -767,11 +726,9 @@ export const TaskList = memo(function TaskList({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Tabs - 设计稿 padding 12 16 16 16 */}
       <TaskTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Task list - 设计稿 padding 8 12, gap 2 */}
-      <div className="flex-1 min-h-0 overflow-auto px-3 py-2 relative">
+      <div className="task-scroll flex-1 min-h-0 overflow-auto px-2 pb-2 relative">
         {/* 刷新时也展示 loading 态 - 设计稿 JdjqO */}
         {isLoading || isFetching ? (
           <LoadingState />
@@ -784,44 +741,34 @@ export const TaskList = memo(function TaskList({
         ) : tasks.length === 0 ? (
           <EmptyState statusFilter={activeTab} />
         ) : (
-          <div className="flex flex-col">
-            {tasks.map((task, index) => (
-              <div key={task.id}>
-                <TaskItem
-                  task={task}
-                  statusOptions={statusOptions}
-                  onUpdate={handleTaskUpdate}
-                  isUpdating={updatingTaskIds.has(task.id)}
-                  updateError={null}
-                />
-                {index < tasks.length - 1 && (
-                  <Separator className="my-0.5 bg-border/50 h-[1.5px]" />
-                )}
-              </div>
+          <div className="flex flex-col gap-2">
+            {tasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                task={task}
+                statusOptions={statusOptions}
+                onUpdate={handleTaskUpdate}
+                isUpdating={updatingTaskIds.has(task.id)}
+                updateError={null}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* Footer - 设计稿 JJmcB 100% 复刻 */}
-      {/* JJmcB: height 40, padding [16,16,16,24], justify end, align center, shadow blur 7 offset y:-3 */}
       <footer
-        className="flex items-center justify-end shrink-0 relative"
+        className="flex min-h-10 items-center justify-end px-4 py-2 shrink-0 relative"
         style={{
-          height: 40,
-          padding: '16px 16px 16px 24px',
           boxShadow: '0 -3px 7px rgba(0, 0, 0, 0.06)',
           backgroundColor: 'rgba(255, 255, 255, 0.5)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)'
         }}
       >
-        {/* x4vAL: 右侧 - gap 12, Last sync + Settings */}
-        <div className="flex items-center justify-center" style={{ gap: 12 }}>
-          {/* fdvPV: .sync-text - Inter 12px normal, #737373, opacity 0.7 */}
+        <div className="flex min-w-0 items-center gap-3">
           <span
+            className="min-w-0 wrap-anywhere text-xs"
             style={{
-              fontFamily: 'Inter, sans-serif',
               fontSize: 12,
               fontWeight: 400,
               color: '#737373',
@@ -830,12 +777,10 @@ export const TaskList = memo(function TaskList({
           >
             Last sync: {formatLastSynced() || '--:--'}
           </span>
-          {/* VRG71: .settings-icon-btn 20x20, 内含 8YdKo settings-2 icon 16x16 #737373 */}
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
-              className="flex items-center justify-center transition-colors hover:opacity-80"
-              style={{ width: 20, height: 20 }}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded transition-opacity duration-150 hover:opacity-80"
               title="Settings"
               aria-label="Open settings"
             >

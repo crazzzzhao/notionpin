@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import electron from 'electron'
+import { checkUiLayout } from './check-ui-layout.mjs'
+import { checkSettingsLayout } from './check-settings-layout.mjs'
+import { checkAppLayout } from './check-app-layout.mjs'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const profile = await mkdtemp(join(tmpdir(), 'nopin-window-check-'))
@@ -199,11 +202,30 @@ try {
   await main.evaluate(`(() => {
     const {ipcMain} = process.mainModule.require('electron');
     const id='0123456789abcdef0123456789abcdef';
+    const statuses=new Map();
+    const fixture=globalThis.nopinLayoutFixture={mode:'tasks',longText:false};
     const mapping={textPropertyId:'title',statusPropertyId:'status',timePropertyId:'due',boundDataSourceId:id};
     const handlers={
-      'settings:load':()=>({isTokenConfigured:true,databaseId:id,databaseUrl:null,dataSourceId:id,fieldMapping:mapping}),
-      'notion:getSchema':()=>({success:true,dataSourceId:id,properties:[{id:'title',name:'Task',type:'title'},{id:'status',name:'Status',type:'status',options:[{id:'todo',name:'Not started',color:'default'}]},{id:'due',name:'Due',type:'date'}]}),
-      'notion:queryTasks':()=>({success:true,hasMore:false,totalFetched:500,tasks:Array.from({length:500},(_,i)=>({id:'fixture-'+i,title:'Synthetic task '+String(i+1).padStart(3,'0'),status:'Not started',due:null,url:'https://www.notion.so/'+id,lastEditedTime:'2026-09-05T00:00:00.000Z'}))})
+      'settings:load':()=>fixture.mode==='unconfigured'
+        ? {isTokenConfigured:false,databaseId:null,databaseUrl:null,dataSourceId:null,fieldMapping:null}
+        : {isTokenConfigured:true,databaseId:id,databaseUrl:'https://www.notion.so/'+id,dataSourceId:id,fieldMapping:mapping},
+      'notion:getSchema':()=>({success:true,dataSourceId:id,properties:[{id:'title',name:'Task',type:'title'},{id:'status',name:'Status',type:'status',options:[{id:'todo',name:fixture.longText?'Waiting for the final review and approval from the project team':'Not started',color:'red'},{id:'doing',name:'In progress',color:'blue'},{id:'done',name:'Done',color:'green'}]},{id:'due',name:'Due',type:'date'}]}),
+      'notion:updateTask':(_event,{pageId,updates})=>{
+        const status=updates.find(update=>update.field==='status');
+        if(status) statuses.set(pageId,status.value);
+        return {success:true};
+      },
+      'notion:queryTasks':()=>{
+        if(fixture.mode==='loading') return new Promise(()=>{});
+        if(['error','mapping','permission','rate'].includes(fixture.mode)) return {success:false,error:{
+          code:({mapping:'mapping_not_configured',permission:'restricted',rate:'rate_limited'})[fixture.mode] ?? 'unknown',
+          userMessage:fixture.longText?'Unable to reach this database: '+ 'A-very-long-database-reference'.repeat(8):'Please check your Notion connection and try again.',retryAfter:30}};
+        const tasks=fixture.mode==='empty'?[]:Array.from({length:500},(_,i)=>({id:'fixture-'+i,
+          title:fixture.longText?'Synthetic task '+String(i+1).padStart(3,'0')+' — Review the complete project documentation and all proposed changes before approving the release':'Synthetic task '+String(i+1).padStart(3,'0'),
+          status:fixture.longText?'Waiting for the final review and approval from the project team':statuses.get('fixture-'+i) ?? 'Not started',
+          due:fixture.longText?'2026-09-07':null,url:'https://www.notion.so/'+id,lastEditedTime:'2026-09-05T00:00:00.000Z'}));
+        return {success:true,hasMore:false,totalFetched:tasks.length,tasks};
+      }
     };
     for (const [channel,handler] of Object.entries(handlers)){ipcMain.removeHandler(channel);ipcMain.handle(channel,handler);}
     return true;
@@ -274,6 +296,9 @@ try {
     'Fixtures leaked into persistent configuration'
   )
   await mkdir(reportDirectory, { recursive: true })
+  await checkUiLayout({ renderer, waitFor, directory: reportDirectory })
+  await checkSettingsLayout({ renderer, main, waitFor, directory: reportDirectory })
+  await checkAppLayout({ renderer, main, waitFor, directory: reportDirectory })
   await writeFile(
     join(reportDirectory, 'motion-report.json'),
     `${JSON.stringify(report, null, 2)}\n`

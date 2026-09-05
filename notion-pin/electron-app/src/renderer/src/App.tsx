@@ -27,7 +27,7 @@ function RefreshToast({ type, message, onDismiss }: RefreshToastProps): React.JS
   const isSuccess = type === 'success'
   return (
     <div
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center animate-in slide-in-from-bottom-2"
+      className="app-toast fixed bottom-14 inset-x-4 mx-auto w-fit max-w-[calc(100vw_-_32px)] z-40 flex items-start animate-in slide-in-from-bottom-2"
       style={{
         padding: '12px 16px',
         gap: 12,
@@ -43,6 +43,7 @@ function RefreshToast({ type, message, onDismiss }: RefreshToastProps): React.JS
         <CircleX style={{ width: 18, height: 18, color: '#d44c47', flexShrink: 0 }} />
       )}
       <span
+        className="min-w-0"
         style={{
           fontFamily: 'Inter, sans-serif',
           fontSize: 12,
@@ -63,14 +64,14 @@ interface NotConnectedStateProps {
 
 function NotConnectedState({ onOpenSettings }: NotConnectedStateProps): React.JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 px-6">
+    <div className="state-screen">
       <div
-        className="flex items-center justify-center w-14 h-14 rounded-full"
+        className="flex items-center justify-center w-14 h-14 shrink-0 rounded-full"
         style={{ background: 'rgba(115, 115, 115, 0.1)' }}
       >
         <Unplug className="w-7 h-7 text-muted-foreground" />
       </div>
-      <div className="text-center space-y-1.5">
+      <div className="text-center space-y-2">
         <h3 className="text-[15px] font-semibold text-foreground">Notion not connected</h3>
         <p className="text-[13px] text-muted-foreground">
           Add your Notion token and database to view tasks.
@@ -78,7 +79,7 @@ function NotConnectedState({ onOpenSettings }: NotConnectedStateProps): React.JS
       </div>
       <Button
         size="sm"
-        className="h-9 px-5 rounded-lg text-[13px] font-medium text-white"
+        className="min-h-9 max-w-full px-5 text-[13px] font-medium text-white"
         style={{
           background: '#007AFF',
           boxShadow: '0 1px 3px rgba(0,122,255,0.3)'
@@ -229,7 +230,7 @@ function AppContent(): React.JSX.Element {
     <div className="relative flex flex-col h-screen w-full min-w-0 text-foreground overflow-hidden window-surface">
       {/* Header - 设计稿 .title-bar 48px */}
       <header
-        className="flex items-center justify-between h-12 px-4 shrink-0"
+        className="window-header flex items-center justify-between gap-2 px-4 shrink-0"
         style={
           {
             WebkitAppRegion: 'drag'
@@ -238,16 +239,16 @@ function AppContent(): React.JSX.Element {
       >
         <span className="text-base font-semibold text-foreground">Nopin</span>
 
-        {/* 右侧：Refresh, Toggle, Close - 设计稿 20x20 */}
+        {/* 24px hit areas with 8px spacing; aligned with the footer action. */}
         <div
-          className="flex items-center gap-3"
+          className="flex items-center gap-2"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {!isCollapsed && settings.isTokenConfigured && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5 rounded"
+              className="h-6 w-6 rounded"
               onClick={handleRefresh}
               disabled={queryControls?.isFetching}
               title="Refresh"
@@ -261,7 +262,7 @@ function AppContent(): React.JSX.Element {
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 rounded"
+            className="h-6 w-6 rounded"
             onClick={() => void windowCollapse.toggle()}
             aria-expanded={!isCollapsed}
             aria-controls="window-content"
@@ -277,7 +278,7 @@ function AppContent(): React.JSX.Element {
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 rounded hover:bg-destructive/10 hover:text-destructive"
+            className="h-6 w-6 rounded hover:bg-destructive/10 hover:text-destructive"
             onClick={handleClose}
             title="Close"
             aria-label="Close"
@@ -297,7 +298,7 @@ function AppContent(): React.JSX.Element {
       >
         {/* 未连接状态 - 友好的引导 UI */}
         {!settings.isTokenConfigured ? (
-          <div className="flex-1 overflow-hidden">
+          <div className="state-scroll flex-1 min-h-0 overflow-y-auto px-4">
             <NotConnectedState onOpenSettings={handleOpenSettings} />
           </div>
         ) : (
