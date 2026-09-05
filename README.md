@@ -30,7 +30,24 @@ Open the repository's [Releases](https://github.com/crazzzzhao/notionpin/release
 
 Both builds require macOS 13 Ventura or newer.
 
-The first public builds are unsigned because the project does not yet have an Apple Developer ID certificate. macOS may block the first normal double-click. In Finder, right-click `Nopin.app`, choose **Open**, then confirm **Open**. If macOS still blocks it, open **System Settings → Privacy & Security** and allow the app there. Do not disable Gatekeeper system-wide.
+> **Unsigned and not notarized:** These builds have no Apple Developer ID signature and have not been notarized by Apple. macOS may block the first launch. This project does not claim Apple security approval.
+
+The app uses an ad-hoc signature to seal its bundled files. This needs no developer certificate and does not make the app trusted by Gatekeeper.
+
+#### First launch on macOS
+
+Only continue if you trust this repository and the downloaded file.
+
+1. Open the DMG and drag `Nopin.app` into **Applications**.
+2. Open Nopin from **Applications** once. If macOS blocks it because the developer cannot be verified or Apple cannot check it, dismiss the alert.
+3. Go to **System Settings → Privacy & Security**, scroll to **Security**, and find the blocked Nopin entry. Choose **Open Anyway** (the label can vary by macOS version).
+4. Confirm **Open** and authenticate if prompted.
+
+Apple's guide notes that the approval option is available for about one hour after an opening attempt. If the option is missing, try opening Nopin once more; on a managed Mac, contact your administrator. See [Apple's official guide for opening an app from an unknown developer](https://support.apple.com/guide/mac-help/mh40616/mac).
+
+These steps apply to an unverified-developer warning, not an alert that the app **is damaged** or **will damage your computer**. For those alerts, stop and [report the exact message](https://github.com/crazzzzhao/notionpin/issues), without sharing your Notion token. Do not disable Gatekeeper, remove quarantine attributes, or change security settings system-wide. See [Apple's explanation of the different security alerts](https://support.apple.com/en-us/102445).
+
+The release includes `SHA256SUMS.txt` to check that a download matches the published file; a matching checksum is not an Apple signature or notarization.
 
 ### Connect a Notion database
 
@@ -103,12 +120,15 @@ Build output is written to `notion-pin/electron-app/dist/` and is intentionally 
 
 CI checks pushes and pull requests. A tag matching the package version, such as `v1.0.0`, triggers the release workflow, which builds separate arm64 and x64 DMGs and publishes SHA-256 checksums. Maintainers should review local changes and update `package.json` before creating a release tag.
 
+While these builds are unsigned, release titles include `Unsigned / 未签名`, and the workflow includes the bilingual [unsigned macOS release notes](docs/releases/unsigned-macos.md) with the first-launch instructions. Packaging steps do not upload files themselves; the final Release step uploads the assets and publishes the notes together.
+
 The first release does not implement automatic updates. Users download later versions from GitHub Releases.
 
 ### Known limitations
 
 - macOS 13 Ventura or newer only
-- Unsigned and not notarized; Gatekeeper requires manual approval on first launch
+- Unsigned and not notarized; macOS may block the first launch, and manual approval is not guaranteed to resolve every launch error
+- macOS may request Keychain access again after an update because these builds have no Developer ID identity
 - Each refresh loads at most 500 tasks; due dates are edited as calendar dates without a time
 - Intel artifacts can be built automatically, but maintainers should test important releases on real Intel hardware when available
 
@@ -136,7 +156,24 @@ Nopin 是一个轻量、始终置顶的 macOS Notion 任务窗口，可直接查
 
 两个版本都需要 macOS 13 Ventura 或更高版本。
 
-首批公开版本没有 Apple Developer ID 签名和公证。如果 macOS 拦截首次打开，请在 Finder 中右键点击 `Nopin.app`，选择“打开”并再次确认。如果仍被拦截，前往“系统设置 → 隐私与安全性”手动允许。不要在系统范围禁用 Gatekeeper。
+> **未签名、未公证：** 本版本没有 Apple Developer ID 签名，也未经过 Apple 公证。macOS 可能拦截首次启动；这不代表应用获得了 Apple 的安全认证。
+
+应用使用不需要开发者证书的 ad-hoc 临时签名封装文件完整性；它不等同于 Developer ID 签名，也不会让 Gatekeeper 自动信任应用。
+
+#### 首次打开
+
+仅在你信任本仓库和下载文件的前提下继续。
+
+1. 打开 DMG，将 `Nopin.app` 拖入“**应用程序**”。
+2. 从“应用程序”尝试打开 Nopin 一次。如果出现“无法验证开发者”或“Apple 无法检查此 App”的提示，先关闭提示框。
+3. 前往“**系统设置 → 隐私与安全性**”，向下找到“安全性”中的 Nopin 拦截记录，选择“**仍要打开**”（部分系统会先显示“打开”）。
+4. 按提示再次确认打开；需要时使用 Mac 登录密码或系统要求的方式验证。
+
+Apple 说明，此放行选项通常在尝试打开 App 后一小时内可用。若没有显示，可重新尝试打开 Nopin 一次；公司或学校管理的 Mac 请联系管理员。参见 [Apple 官方：打开来自未知开发者的 Mac App](https://support.apple.com/zh-cn/guide/mac-help/mh40616/mac)。
+
+以上步骤只针对“开发者无法验证”一类提示。如果显示“**应用已损坏**”或“**将损坏你的电脑**”，请停止打开，并[反馈完整错误提示](https://github.com/crazzzzhao/notionpin/issues)，不要附上 Notion token。不要关闭 Gatekeeper、移除隔离属性，或在系统范围降低安全设置。不同提示的含义见 [Apple 官方安全说明](https://support.apple.com/zh-cn/102445)。
+
+Release 附带 `SHA256SUMS.txt`，用于确认下载文件与发布文件一致；校验和不能代替 Apple 签名或公证。
 
 ### 连接 Notion
 
@@ -181,7 +218,8 @@ npm run build:mac:x64
 ### 已知限制
 
 - 目前仅支持 macOS 13 Ventura 或更高版本。
-- 未签名、未公证，首次打开需要手动允许。
+- 未签名、未公证，首次启动可能被拦截；手动允许不能保证解决所有启动错误。
+- 因为没有 Developer ID 身份，更新后 macOS 可能再次询问钥匙串访问权限。
 - 每次刷新最多读取 500 条任务；截止日期仅按日期编辑，不包含具体时间。
 - 暂无自动更新，新版本需要从 GitHub Releases 下载。
 

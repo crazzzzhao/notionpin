@@ -45,10 +45,19 @@ jobs:
         run: npm run build
 
       - name: Package Intel DMG
-        run: npx electron-builder --mac --x64
+        run: npx electron-builder --mac --x64 --publish never
 
       - name: Package Apple Silicon DMG
-        run: npx electron-builder --mac --arm64
+        run: npx electron-builder --mac --arm64 --publish never
+
+      - name: Verify bundle signatures and disk images
+        run: |
+          for app_bundle in dist/mac/Nopin.app dist/mac-arm64/Nopin.app; do
+            codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          done
+          for disk_image in dist/*.dmg; do
+            hdiutil verify "$disk_image"
+          done
 
       - name: Verify package metadata
         run: |
@@ -74,5 +83,6 @@ jobs:
           dist/*.dmg
           dist/SHA256SUMS.txt
           --verify-tag
-          --title "Nopin $GITHUB_REF_NAME"
+          --title "Nopin $GITHUB_REF_NAME (Unsigned / 未签名)"
+          --notes-file ../../docs/releases/unsigned-macos.md
           --generate-notes

@@ -17,6 +17,10 @@ mac:
   category: public.app-category.productivity
   icon: build/icon.icns
   minimumSystemVersion: '13.0'
+  # Seal the bundle without a Developer ID certificate or Apple notarization.
+  identity: '-'
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
   extendInfo:
