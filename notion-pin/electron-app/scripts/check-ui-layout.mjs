@@ -139,6 +139,30 @@ export async function checkUiLayout({ renderer, waitFor, directory }) {
     `document.querySelector('.task-row button[aria-haspopup="menu"]').textContent.trim() === 'Done' && !document.querySelector('[role="menu"]')`
   )
 
+  // Compare rendered fields, not just class names: inline styles can override focus rings.
+  const fieldSurfaceProperties = [
+    'height',
+    'borderRadius',
+    'borderTopWidth',
+    'borderTopStyle',
+    'borderTopColor',
+    'backgroundColor',
+    'boxShadow',
+    'fontSize',
+    'fontWeight',
+    'lineHeight',
+    'paddingInlineStart'
+  ]
+  const readFieldSurfaces = (focusFields = false) =>
+    renderer.evaluate(`(() => {
+      const properties=${JSON.stringify(fieldSurfaceProperties)};
+      return [...document.querySelectorAll('.settings-body input, .settings-body select')].map(field=>{
+        if (${focusFields}) field.focus();
+        const style=getComputedStyle(field);
+        return {surface:Object.fromEntries(properties.map(property=>[property,style[property]])),
+          focusVisible:field.matches(':focus-visible')};
+      });
+    })()`)
   const settingsSizes = []
   for (const [width, height] of [
     [400, 420],
@@ -196,12 +220,54 @@ export async function checkUiLayout({ renderer, waitFor, directory }) {
       )
       assert(settings.labelled && settings.pills, `Settings labels or pills regressed: ${tab}`)
       if (height === 420) assert(settings.scrolls, 'Small-window form is not scrollable')
+      settings.fieldSurfaces = await readFieldSurfaces()
+      const fieldCenter = await renderer.evaluate(`(() => {
+        const field=document.querySelector('.settings-body input, .settings-body select');
+        field.scrollIntoView({block:'nearest'});
+        const box=field.getBoundingClientRect();
+        return {x:(box.left+box.right)/2,y:(box.top+box.bottom)/2};
+      })()`)
+      await renderer.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...fieldCenter })
+      settings.hoverSurfaces = await readFieldSurfaces()
+      await renderer.evaluate(
+        `document.querySelector('.settings-panel button[aria-label="Field Mapping"]').focus()`
+      )
+      await key('Tab', 9)
+      settings.focusSurfaces = await readFieldSurfaces(true)
+      assert(
+        settings.focusSurfaces.every(
+          (field) => field.focusVisible && field.surface.boxShadow !== 'none'
+        ),
+        `A field lost its visible keyboard focus: ${tab}`
+      )
+      await renderer.evaluate(`(() => {
+        document.activeElement.blur();
+        document.querySelector('.settings-scroll').scrollTop=0;
+      })()`)
       settingsSizes.push(settings)
     }
     await renderer.evaluate(
       `document.querySelector('.settings-panel button[aria-label="Close"]').click()`
     )
     await waitFor(`!document.querySelector('.settings-panel')`)
+  }
+  const mappingReference = settingsSizes.find((entry) => entry.tab === 'Field Mapping')
+  assert(mappingReference, 'The Field Mapping reference is missing')
+  for (const entry of settingsSizes) {
+    for (const state of ['fieldSurfaces', 'hoverSurfaces', 'focusSurfaces']) {
+      for (const field of entry[state]) {
+        assert.deepEqual(
+          field.surface,
+          mappingReference[state][0].surface,
+          `${entry.tab} differs from the Field Mapping surface (${state})`
+        )
+      }
+    }
+    assert(
+      entry.fieldSurfaces.every((field) => field.surface.backgroundColor === 'rgb(255, 255, 255)')
+    )
+    assert(entry.fieldSurfaces.every((field) => field.surface.borderTopWidth === '1px'))
+    assert(entry.fieldSurfaces.every((field) => field.surface.boxShadow === 'none'))
   }
   const report = {
     layout,

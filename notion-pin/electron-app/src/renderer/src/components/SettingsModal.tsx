@@ -28,6 +28,10 @@ const settingsSchema = z.object({
   databaseUrl: z.string().min(1, 'Database URL is required')
 })
 
+// Keep Connection inputs on the same surface as the Field Mapping selects.
+const fieldControlClassName =
+  'w-full h-10 ps-3 text-[13px] border border-input rounded-xl bg-popover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
 // ========== 字段映射选择器 ==========
 // 选项显示格式：字段名 · Title/Text | 字段名 · Status | 字段名 · Date
 
@@ -69,7 +73,7 @@ function FieldSelect({
           id={id}
           value={value || ''}
           onChange={(e) => onChange(e.target.value || null)}
-          className="w-full h-10 ps-3 pe-9 text-[13px] border border-input rounded-xl bg-popover appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+          className={`${fieldControlClassName} pe-9 appearance-none cursor-pointer`}
         >
           <option value="">{placeholder}</option>
           {filteredOptions.map((prop) => (
@@ -397,12 +401,7 @@ export function SettingsModal({
                       isTokenConfigured ? 'Token is stored securely' : 'secret_xxx or ntn_xxx'
                     }
                     autoComplete="off"
-                    className={`w-full h-10 ps-3 ${token ? 'pe-20' : 'pe-10'} text-[13px] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-                    style={{
-                      background: 'rgba(255,255,255,0.25)',
-                      border: '0.5px solid rgba(255,255,255,0.5)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-                    }}
+                    className={`${fieldControlClassName} ${token ? 'pe-20' : 'pe-10'}`}
                   />
                   {/* Icons Wrapper - 设计稿: gap 4 */}
                   <div className="absolute end-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -455,12 +454,7 @@ export function SettingsModal({
                   value={databaseUrl}
                   onChange={(e) => setDatabaseUrl(e.target.value)}
                   placeholder="https://notion.so/..."
-                  className="w-full h-10 px-3 text-[13px] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  style={{
-                    background: 'rgba(255,255,255,0.25)',
-                    border: '0.5px solid rgba(255,255,255,0.5)',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-                  }}
+                  className={`${fieldControlClassName} pe-3`}
                 />
                 {errors.databaseUrl && (
                   <p className="text-xs text-destructive">{errors.databaseUrl}</p>
