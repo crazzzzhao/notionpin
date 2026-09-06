@@ -22,6 +22,8 @@ const child = spawn(
   [
     ...(packagedBinary ? [] : [appRoot]),
     `--user-data-dir=${profile}`,
+    // Disposable UI fixtures must not read or prompt for the user's real Keychain.
+    ...(process.platform === 'darwin' ? ['--use-mock-keychain'] : []),
     '--remote-debugging-address=127.0.0.1',
     '--remote-debugging-port=0',
     '--inspect=127.0.0.1:0'
@@ -162,9 +164,15 @@ try {
     assert(!exited, 'The test app failed to start')
     const match = logs.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)/)
     if (match) {
-      const pages = await fetch(`http://127.0.0.1:${match[1]}/json/list`).then((r) => r.json())
-      page = pages.find((entry) => entry.type === 'page' && entry.url.startsWith('file:'))
-      if (page) break
+      try {
+        const pages = await fetch(`http://127.0.0.1:${match[1]}/json/list`, {
+          signal: AbortSignal.timeout(3000)
+        }).then((r) => r.json())
+        page = pages.find((entry) => entry.type === 'page' && entry.url.startsWith('file:'))
+        if (page) break
+      } catch {
+        // A blocked main process must not leave the readiness check waiting forever.
+      }
     }
     await pause(200)
   }
