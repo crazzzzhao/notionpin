@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import electron from 'electron'
 import { checkUiLayout } from './check-ui-layout.mjs'
 import { checkSettingsLayout } from './check-settings-layout.mjs'
 import { checkAppLayout } from './check-app-layout.mjs'
@@ -17,8 +16,10 @@ const pause = (ms) => new Promise((done) => setTimeout(done, ms))
 const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 const packagedBinary = process.env.NOPIN_TEST_BINARY
+// Packaged checks must not download an unrelated development Electron binary.
+const binary = packagedBinary || (await import('electron')).default
 const child = spawn(
-  packagedBinary || electron,
+  binary,
   [
     ...(packagedBinary ? [] : [appRoot]),
     `--user-data-dir=${profile}`,
@@ -122,6 +123,7 @@ async function measure(label, collapse) {
     const state=await window.windowAPI.getWindowState();
     const durations = frames.map(frame => frame.durationMs);
     return {label:${JSON.stringify(label)}, startedAt, before, after:innerHeight, events,
+      visibility:document.visibilityState,focused:document.hasFocus(),
       nativeCollapsed:state.isCollapsed, contentRetained:main === document.querySelector('#window-content'),
       opacity:getComputedStyle(main).opacity, inert:main.inert,
       buttonDisabled:button.disabled, ariaExpanded:button.getAttribute('aria-expanded'),
@@ -131,6 +133,32 @@ async function measure(label, collapse) {
   const nativeEvents = await main.evaluate('globalThis.nopinMotionEvents')
   const nativeResizeCount = nativeEvents.filter((event) => event.type === 'resize').length
   const nativeCompletionCount = nativeEvents.filter((event) => event.type === 'resized').length
+  const resizeEvents = result.events.filter((event) => event.type === 'resize')
+  const distinctHeights = [...new Set(persistedHeights)]
+  const entry = {
+    ...result,
+    startedAt: undefined,
+    resizeStartMs: resizeEvents[0]?.ms,
+    resizeFinishMs: resizeEvents.at(-1)?.ms,
+    nativeResizeCount,
+    nativeCompletionCount,
+    nativeEvents: nativeEvents.map(({ time, ...event }) => ({
+      ...event,
+      ms: time - result.startedAt
+    })),
+    distinctPersistedHeights: distinctHeights,
+    persistenceEvents: persistenceEvents.map(({ time, height }) => ({
+      ms: time - result.startedAt,
+      height
+    }))
+  }
+  // Retain failing measurements too, so CI failures identify which stage was delayed.
+  report.push(entry)
+  console.log(JSON.stringify({ ...entry, events: undefined }))
+  await writeFile(
+    join(reportDirectory, 'motion-measurements.json'),
+    `${JSON.stringify(report, null, 2)}\n`
+  )
   assert(result.nativeCollapsed === collapse, `${label}: wrong native state`)
   assert(result.contentRetained && !result.buttonDisabled, `${label}: content or controls lost`)
   assert(result.inert === collapse, `${label}: hidden content is still interactive`)
@@ -138,35 +166,19 @@ async function measure(label, collapse) {
   assert(result.ariaExpanded === String(!collapse), `${label}: incorrect accessibility state`)
   const starts = result.events.filter((event) => event.type === 'transitionrun')
   assert(starts.length <= 1, `${label}: an unintended reverse CSS transition occurred`)
-  const resizeEvents = result.events.filter((event) => event.type === 'resize')
   assert(resizeEvents.length > 0, `${label}: window did not resize`)
   assert(
     resizeEvents[0].ms < 300,
     `${label}: native resize started after ${resizeEvents[0].ms}ms (expected under 300ms; native resize events: ${nativeResizeCount}, completion events: ${nativeCompletionCount})`
   )
-  const distinctHeights = [...new Set(persistedHeights)]
   assert(
     distinctHeights.every((height) => height === result.after),
     `${label}: intermediate frames were persisted`
   )
-  const entry = {
-    ...result,
-    startedAt: undefined,
-    resizeStartMs: resizeEvents[0].ms,
-    resizeFinishMs: resizeEvents.at(-1).ms,
-    nativeResizeCount,
-    nativeCompletionCount,
-    distinctPersistedHeights: distinctHeights,
-    persistenceEvents: persistenceEvents.map(({ time, height }) => ({
-      ms: time - result.startedAt,
-      height
-    }))
-  }
-  report.push(entry)
-  console.log(JSON.stringify({ ...entry, events: undefined }))
 }
 
 try {
+  await mkdir(reportDirectory, { recursive: true })
   let page
   const start = Date.now()
   while (Date.now() - start < 55000) {
@@ -201,8 +213,13 @@ try {
     const window = BrowserWindow.getAllWindows()[0];
     globalThis.nopinMotionEvents = [];
     for (const type of ['resize', 'resized']) {
-      window.on(type, () => globalThis.nopinMotionEvents.push({type, height: window.getBounds().height}));
+      window.on(type, () => globalThis.nopinMotionEvents.push({type, time:Date.now(), height: window.getBounds().height}));
     }
+    const setBounds = window.setBounds.bind(window);
+    window.setBounds = (...args) => {
+      globalThis.nopinMotionEvents.push({type:'setBounds',time:Date.now(),height:args[0].height});
+      return setBounds(...args);
+    };
     return true;
   })()`)
   watcher = watch(profile, (_event, filename) => {

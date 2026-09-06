@@ -62,7 +62,8 @@ export async function checkAppLayout({ renderer, main, waitFor, directory }) {
         await pause(500)
         const selectors = ['.window-header']
         if (mode !== 'unconfigured') selectors.push('footer')
-        if (mode === 'tasks') {
+        // Connected empty, loading and error states keep the same animated filter rail.
+        if (mode !== 'unconfigured') {
           selectors.push(
             '.task-tabs .animated-tabs',
             '.task-tabs .animated-tabs > [aria-selected="true"]',
@@ -84,14 +85,15 @@ export async function checkAppLayout({ renderer, main, waitFor, directory }) {
           const controls=[...header.querySelectorAll('button'),...(footer?.querySelectorAll('button')??[])];
           const stableControlsVisible=controls.every(el=>inside(el.getBoundingClientRect(),viewport));
           const tabsFit=!rail || [...rail.querySelectorAll('button')].every(el=>el.scrollWidth<=el.clientWidth+1 && inside(el.getBoundingClientRect(),viewport));
-          let highlightAligned=true;
+          let highlightAligned=true, highlightDelta=[];
           if(rail) {const active=rail.querySelector('[aria-selected="true"]').getBoundingClientRect(); const highlight=rail.firstElementChild.getBoundingClientRect();
+            highlightDelta=[active.left-highlight.left,active.top-highlight.top,active.width-highlight.width];
             highlightAligned=Math.abs(active.left-highlight.left)<1.1 && Math.abs(active.top-highlight.top)<1.1 && Math.abs(active.width-highlight.width)<1.1;}
           const stateAction=document.querySelector('.state-screen button');
           let actionReachable=true;
           if(stateAction) {stateAction.scrollIntoView({block:'nearest'}); actionReachable=inside(stateAction.getBoundingClientRect(),scroll.getBoundingClientRect()) && stateAction.scrollWidth<=stateAction.clientWidth+1;}
           return {viewport:[innerWidth,innerHeight],scrollHeight:scroll.clientHeight,
-            stableControlsVisible,tabsFit,highlightAligned,actionReachable,
+            stableControlsVisible,tabsFit,highlightAligned,highlightDelta,actionReachable,
             horizontalOverflow:scroll.scrollWidth>scroll.clientWidth+1,
             grouped:!document.querySelector('.state-screen') || getComputedStyle(document.querySelector('.state-screen')).gap==='16px'};
         })()`)
