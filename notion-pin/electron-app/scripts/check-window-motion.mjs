@@ -322,6 +322,13 @@ try {
     config.encryptedToken === null && config.databaseId === null,
     'Fixtures leaked into persistent configuration'
   )
+  // Keep layout animations painting even when the disposable test window is occluded.
+  // Motion/performance checks above retain the application's default throttling.
+  await main.evaluate(`(() => {
+    const window = process.mainModule.require('electron').BrowserWindow.getAllWindows()[0];
+    window.webContents.setBackgroundThrottling(false);
+    return true;
+  })()`)
   await mkdir(reportDirectory, { recursive: true })
   await checkUiLayout({ renderer, waitFor, directory: reportDirectory })
   await checkSettingsLayout({ renderer, main, waitFor, directory: reportDirectory })

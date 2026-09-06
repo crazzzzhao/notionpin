@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { waitForLayoutToSettle } from './layout-stability.mjs'
 
 // Layout stress tests only: all configuration and labels belong to the disposable fixture.
 export async function checkSettingsLayout({ renderer, main, waitFor, directory }) {
@@ -61,6 +62,16 @@ export async function checkSettingsLayout({ renderer, main, waitFor, directory }
           }
         })()`)
         await pause(500)
+        const { elapsedMs: layoutSettleMs } = await waitForLayoutToSettle({
+          renderer,
+          label: `${scenario.name}/${tab}`,
+          selectors: [
+            '.settings-panel',
+            '.settings-tabs .animated-tabs',
+            '.settings-tabs .animated-tabs > [aria-selected="true"]',
+            '.settings-tabs .animated-tabs > [aria-hidden="true"]'
+          ]
+        })
         const result = await renderer.evaluate(`(() => {
           const panel=document.querySelector('.settings-panel'), bounds=panel.getBoundingClientRect();
           const scroll=panel.querySelector('.settings-scroll, .settings-body');
@@ -84,9 +95,10 @@ export async function checkSettingsLayout({ renderer, main, waitFor, directory }
           return {viewport:[innerWidth,innerHeight], panel:[bounds.width,bounds.height],
             scrollHeight:scroll.clientHeight, clippedControls, actionsVisible, fieldsReachable:reachable,
             horizontalOverflow:scroll.scrollWidth>scroll.clientWidth+1,
+            highlightDelta:[active.left-highlight.left,active.right-highlight.right],
             highlightAligned:Math.abs(active.left-highlight.left)<1 && Math.abs(active.right-highlight.right)<1};
         })()`)
-        report.push({ scenario: scenario.name, tab, ...result })
+        report.push({ scenario: scenario.name, tab, layoutSettleMs, ...result })
         const { data } = await renderer.send('Page.captureScreenshot')
         await writeFile(
           join(directory, `layout-${scenario.name}-${tab.toLowerCase().replace(' ', '-')}.png`),

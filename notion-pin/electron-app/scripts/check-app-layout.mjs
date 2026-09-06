@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { waitForLayoutToSettle } from './layout-stability.mjs'
 
 export async function checkAppLayout({ renderer, main, waitFor, directory }) {
   const pause = (ms) => new Promise((done) => setTimeout(done, ms))
@@ -59,6 +60,20 @@ export async function checkAppLayout({ renderer, main, waitFor, directory }) {
           )
         }
         await pause(500)
+        const selectors = ['.window-header']
+        if (mode !== 'unconfigured') selectors.push('footer')
+        if (mode === 'tasks') {
+          selectors.push(
+            '.task-tabs .animated-tabs',
+            '.task-tabs .animated-tabs > [aria-selected="true"]',
+            '.task-tabs .animated-tabs > [aria-hidden="true"]'
+          )
+        }
+        const { elapsedMs: layoutSettleMs } = await waitForLayoutToSettle({
+          renderer,
+          selectors,
+          label: `${screen.name}/${mode}`
+        })
         const result = await renderer.evaluate(`(() => {
           const viewport={left:0,top:0,right:innerWidth,bottom:innerHeight};
           const inside=(box,outer)=>box.left>=outer.left-1 && box.right<=outer.right+1 && box.top>=outer.top-1 && box.bottom<=outer.bottom+1;
@@ -80,7 +95,7 @@ export async function checkAppLayout({ renderer, main, waitFor, directory }) {
             horizontalOverflow:scroll.scrollWidth>scroll.clientWidth+1,
             grouped:!document.querySelector('.state-screen') || getComputedStyle(document.querySelector('.state-screen')).gap==='16px'};
         })()`)
-        report.push({ screen: screen.name, mode, ...result })
+        report.push({ screen: screen.name, mode, layoutSettleMs, ...result })
         const { data } = await renderer.send('Page.captureScreenshot')
         await writeFile(
           join(directory, `app-${screen.name}-${mode}.png`),
