@@ -206,14 +206,97 @@ describe('native collapse and geometry persistence', () => {
     }
   )
 
-  it('settles if the native completion event is missing', async () => {
+  it('settles after the target height is quiet when the native completion event is missing', async () => {
     const { controller, persist } = setup()
+    const settled = vi.fn()
     const completion = controller.setCollapsed(true, true)
-    vi.advanceTimersByTime(1000)
+    void completion.then(settled)
+    await vi.advanceTimersByTimeAsync(99)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toHaveBeenCalledWith(true)
     await expect(completion).resolves.toBe(true)
     expect(persist).not.toHaveBeenCalled()
     vi.advanceTimersByTime(WINDOW_SAVE_DELAY_MS)
     expect(persist).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('restarts the quiet period when another resize event arrives at the target', async () => {
+    const { controller, resize } = setup()
+    const settled = vi.fn()
+    void controller.setCollapsed(true, true).then(settled)
+    await vi.advanceTimersByTimeAsync(80)
+    resize(COLLAPSED_HEIGHT)
+    await vi.advanceTimersByTimeAsync(99)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toHaveBeenCalledWith(true)
+  })
+
+  it('cancels target observation when another intermediate height arrives', async () => {
+    const { controller, persist, resize } = setup()
+    const settled = vi.fn()
+    void controller.setCollapsed(true, true).then(settled)
+    await vi.advanceTimersByTimeAsync(80)
+    resize(300)
+    await vi.advanceTimersByTimeAsync(150)
+    expect(settled).not.toHaveBeenCalled()
+    expect(persist).not.toHaveBeenCalled()
+    resize(COLLAPSED_HEIGHT)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(settled).toHaveBeenCalledWith(true)
+    expect(persist).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(WINDOW_SAVE_DELAY_MS)
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist.mock.calls[0][0].windowBounds.height).toBe(COLLAPSED_HEIGHT)
+  })
+
+  it('does not acknowledge an early native completion signal at an intermediate height', async () => {
+    const { controller, window, persist, resize } = setup()
+    const settled = vi.fn()
+    void controller.setCollapsed(true, true).then(settled)
+    resize(300)
+    window.emit('resized')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(settled).not.toHaveBeenCalled()
+    expect(persist).not.toHaveBeenCalled()
+    resize(COLLAPSED_HEIGHT)
+    window.emit('resized')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settled).toHaveBeenCalledWith(true)
+    vi.advanceTimersByTime(WINDOW_SAVE_DELAY_MS)
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not accumulate a queue between completed toggles without native completion events', async () => {
+    const { controller, window } = setup()
+    const completions: Promise<boolean>[] = []
+    for (let index = 0; index < 6; index++) {
+      completions.push(controller.setCollapsed(index % 2 === 0, true))
+      expect(window.setBounds).toHaveBeenCalledTimes(index + 1)
+      await vi.advanceTimersByTimeAsync(850)
+    }
+    await expect(Promise.all(completions)).resolves.toEqual([true, false, true, false, true, false])
+    expect(controller.getState()).toMatchObject({ isCollapsed: false, bounds: { height: 640 } })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retains the bounded timeout if native resize events never arrive', async () => {
+    const { controller, window, persist } = setup()
+    window.setBounds.mockImplementationOnce(() => undefined)
+    const settled = vi.fn()
+    const completion = controller.setCollapsed(true, true)
+    void completion.then(settled)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toHaveBeenCalledWith(true)
+    expect(persist).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(WINDOW_SAVE_DELAY_MS)
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('recovers native state after a failed resize', async () => {

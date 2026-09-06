@@ -4,6 +4,7 @@ import type { WindowBounds } from '../shared/windowState'
 export const COLLAPSED_HEIGHT = 52
 export const DEFAULT_EXPANDED_HEIGHT = 420
 export const WINDOW_SAVE_DELAY_MS = 200
+const RESIZE_SETTLE_DELAY_MS = 100
 const RESIZE_TIMEOUT_MS = 1000
 
 export interface SavedWindowState {
@@ -29,6 +30,8 @@ export class WindowStateController {
   private expandedHeight: number
   private saveTimer: ReturnType<typeof setTimeout> | undefined
   private resizeTimer: ReturnType<typeof setTimeout> | undefined
+  private resizeSettleTimer: ReturnType<typeof setTimeout> | undefined
+  private targetHeight: number | undefined
   private pending: Promise<boolean> | undefined
   private finishResize: (() => void) | undefined
   private lastSaved = ''
@@ -41,7 +44,7 @@ export class WindowStateController {
     this.collapsed = initial.isCollapsed
     this.expandedHeight = normalizeExpandedHeight(initial.expandedHeight)
     window.on('move', this.scheduleSave)
-    window.on('resize', this.scheduleSave)
+    window.on('resize', this.onResize)
     window.on('resized', this.onResized)
     window.on('close', this.flush)
     window.on('closed', this.dispose)
@@ -69,8 +72,11 @@ export class WindowStateController {
       resolveResize = resolve
     })
     this.pending = completion
+    this.targetHeight = height
     this.finishResize = () => {
       clearTimeout(this.resizeTimer)
+      clearTimeout(this.resizeSettleTimer)
+      this.targetHeight = undefined
       this.finishResize = undefined
       this.pending = undefined
       // Let the last native frame and the IPC reply finish before synchronous I/O.
@@ -97,9 +103,29 @@ export class WindowStateController {
     this.saveTimer = setTimeout(this.flush, WINDOW_SAVE_DELAY_MS)
   }
 
+  private hasReachedTargetHeight = (): boolean =>
+    this.targetHeight !== undefined &&
+    !this.window.isDestroyed() &&
+    this.window.getBounds().height === this.targetHeight
+
+  private onResize = (): void => {
+    clearTimeout(this.resizeSettleTimer)
+    if (!this.pending) {
+      this.scheduleSave()
+      return
+    }
+    if (!this.hasReachedTargetHeight()) return
+    // Some native resizes reach the target without a 'resized' acknowledgement.
+    // Observe a quiet final frame so later clicks do not queue behind the timeout.
+    this.resizeSettleTimer = setTimeout(() => {
+      if (this.hasReachedTargetHeight()) this.finishResize?.()
+    }, RESIZE_SETTLE_DELAY_MS)
+  }
+
   private onResized = (): void => {
-    if (this.finishResize) this.finishResize()
-    else this.scheduleSave()
+    if (this.finishResize) {
+      if (this.hasReachedTargetHeight()) this.finishResize()
+    } else this.scheduleSave()
   }
 
   flush = (): void => {
@@ -132,8 +158,9 @@ export class WindowStateController {
     this.finishResize?.()
     clearTimeout(this.saveTimer)
     clearTimeout(this.resizeTimer)
+    clearTimeout(this.resizeSettleTimer)
     this.window.removeListener('move', this.scheduleSave)
-    this.window.removeListener('resize', this.scheduleSave)
+    this.window.removeListener('resize', this.onResize)
     this.window.removeListener('resized', this.onResized)
     this.window.removeListener('close', this.flush)
     this.window.removeListener('closed', this.dispose)

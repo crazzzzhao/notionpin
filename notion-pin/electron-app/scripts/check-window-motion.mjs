@@ -98,6 +98,7 @@ async function waitFor(expression) {
 async function measure(label, collapse) {
   persistedHeights = []
   persistenceEvents = []
+  await main.evaluate('globalThis.nopinMotionEvents = []')
   const result = await renderer.evaluate(`(async () => {
     const main = document.querySelector('#window-content');
     const events = [], frames = [];
@@ -127,6 +128,9 @@ async function measure(label, collapse) {
       medianFrameMs:[...durations].sort((a,b)=>a-b)[Math.floor(durations.length/2)],
       maxFrameMs:Math.max(...durations), longFrames:frames.filter(frame=>frame.durationMs>50)};
   })()`)
+  const nativeEvents = await main.evaluate('globalThis.nopinMotionEvents')
+  const nativeResizeCount = nativeEvents.filter((event) => event.type === 'resize').length
+  const nativeCompletionCount = nativeEvents.filter((event) => event.type === 'resized').length
   assert(result.nativeCollapsed === collapse, `${label}: wrong native state`)
   assert(result.contentRetained && !result.buttonDisabled, `${label}: content or controls lost`)
   assert(result.inert === collapse, `${label}: hidden content is still interactive`)
@@ -138,7 +142,7 @@ async function measure(label, collapse) {
   assert(resizeEvents.length > 0, `${label}: window did not resize`)
   assert(
     resizeEvents[0].ms < 300,
-    `${label}: native resize started after ${resizeEvents[0].ms}ms (expected under 300ms)`
+    `${label}: native resize started after ${resizeEvents[0].ms}ms (expected under 300ms; native resize events: ${nativeResizeCount}, completion events: ${nativeCompletionCount})`
   )
   const distinctHeights = [...new Set(persistedHeights)]
   assert(
@@ -150,6 +154,8 @@ async function measure(label, collapse) {
     startedAt: undefined,
     resizeStartMs: resizeEvents[0].ms,
     resizeFinishMs: resizeEvents.at(-1).ms,
+    nativeResizeCount,
+    nativeCompletionCount,
     distinctPersistedHeights: distinctHeights,
     persistenceEvents: persistenceEvents.map(({ time, height }) => ({
       ms: time - result.startedAt,
@@ -186,6 +192,19 @@ try {
     await renderer.evaluate('(async()=>!(await window.settingsAPI.load()).isTokenConfigured)()'),
     'Test profile unexpectedly contains credentials'
   )
+  const endpoint = logs.match(/Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/)?.[1]
+  assert(endpoint, 'Main-process test endpoint unavailable')
+  main = await connect(endpoint)
+  // Diagnostics are installed only in this disposable process, not in the app bundle.
+  await main.evaluate(`(() => {
+    const {BrowserWindow} = process.mainModule.require('electron');
+    const window = BrowserWindow.getAllWindows()[0];
+    globalThis.nopinMotionEvents = [];
+    for (const type of ['resize', 'resized']) {
+      window.on(type, () => globalThis.nopinMotionEvents.push({type, height: window.getBounds().height}));
+    }
+    return true;
+  })()`)
   watcher = watch(profile, (_event, filename) => {
     if (filename !== 'config.json') return
     try {
@@ -207,9 +226,6 @@ try {
 
   // Replace IPC handlers only in this disposable process, never in shipping code.
   // Synthetic tasks exercise the real renderer without tokens or network traffic.
-  const endpoint = logs.match(/Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/)?.[1]
-  assert(endpoint, 'Main-process test endpoint unavailable')
-  main = await connect(endpoint)
   await main.evaluate(`(() => {
     const {ipcMain} = process.mainModule.require('electron');
     const id='0123456789abcdef0123456789abcdef';
