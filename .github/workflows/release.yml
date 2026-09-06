@@ -74,6 +74,10 @@ jobs:
             done
           done
 
+      - name: Test packaged app on native Intel macOS
+        timeout-minutes: 5
+        run: NOPIN_TEST_BINARY="$PWD/dist/mac/Nopin.app/Contents/MacOS/Nopin" node scripts/check-window-motion.mjs
+
       - name: Generate checksums
         run: cd dist && shasum -a 256 *.dmg > SHA256SUMS.txt
 

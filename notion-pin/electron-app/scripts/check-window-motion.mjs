@@ -136,7 +136,10 @@ async function measure(label, collapse) {
   assert(starts.length <= 1, `${label}: an unintended reverse CSS transition occurred`)
   const resizeEvents = result.events.filter((event) => event.type === 'resize')
   assert(resizeEvents.length > 0, `${label}: window did not resize`)
-  assert(resizeEvents[0].ms < 300, `${label}: native resize was delayed behind CSS`)
+  assert(
+    resizeEvents[0].ms < 300,
+    `${label}: native resize started after ${resizeEvents[0].ms}ms (expected under 300ms)`
+  )
   const distinctHeights = [...new Set(persistedHeights)]
   assert(
     distinctHeights.every((height) => height === result.after),
