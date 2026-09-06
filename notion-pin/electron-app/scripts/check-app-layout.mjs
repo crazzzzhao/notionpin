@@ -103,6 +103,35 @@ export async function checkAppLayout({ renderer, main, waitFor, directory }) {
           join(directory, `app-${screen.name}-${mode}.png`),
           Buffer.from(data, 'base64')
         )
+        if (!result.highlightAligned) {
+          // Diagnose late painting without changing the original pass/fail result.
+          const later = []
+          for (const delay of [1000, 2000]) {
+            await pause(delay)
+            later.push(
+              await renderer.evaluate(`(() => {
+              const rail=document.querySelector('.task-tabs .animated-tabs');
+              const active=rail.querySelector('[aria-selected="true"]').getBoundingClientRect();
+              const highlight=rail.querySelector('[aria-hidden="true"]');
+              const bounds=highlight.getBoundingClientRect();
+              return {visibility:document.visibilityState,focused:document.hasFocus(),
+                delta:[active.left-bounds.left,active.top-bounds.top,active.width-bounds.width],
+                style:highlight.getAttribute('style'),
+                animations:highlight.getAnimations().map(animation=>({playState:animation.playState,currentTime:animation.currentTime}))};
+            })()`)
+            )
+          }
+          console.log(
+            JSON.stringify({
+              layoutPaintDiagnostic: {
+                screen: screen.name,
+                mode,
+                initial: result.highlightDelta,
+                later
+              }
+            })
+          )
+        }
 
         if (mode === 'tasks') {
           await renderer.evaluate(

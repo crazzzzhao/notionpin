@@ -4,7 +4,14 @@ const pause = (ms) => new Promise((done) => setTimeout(done, ms))
 // A consistently wrong position is stable and must still fail those assertions.
 export async function waitForStableBounds(
   readBounds,
-  { timeoutMs = 2000, quietMs = 150, pollMs = 50, tolerance = 0.05, label = 'layout' } = {}
+  {
+    timeoutMs = 2000,
+    quietMs = 150,
+    pollMs = 50,
+    tolerance = 0.05,
+    label = 'layout',
+    isReady = () => true
+  } = {}
 ) {
   const startedAt = Date.now()
   let anchor
@@ -17,6 +24,12 @@ export async function waitForStableBounds(
     }
     const now = Date.now()
     if (now - startedAt >= timeoutMs) break
+    if (!isReady(latest)) {
+      anchor = undefined
+      stableSince = now
+      await pause(pollMs)
+      continue
+    }
     if (
       !anchor ||
       latest.length !== anchor.length ||
@@ -44,6 +57,11 @@ export function waitForLayoutToSettle({ renderer, selectors, label }) {
           return [bounds.left, bounds.top, bounds.width, bounds.height];
         });
       })()`),
-    { label }
+    {
+      label,
+      // A zero-sized initial animation frame is not a painted control.
+      // Position/alignment is still checked independently by the caller.
+      isReady: (bounds) => bounds.every((value, index) => index % 4 < 2 || value > 0)
+    }
   )
 }

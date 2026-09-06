@@ -1,7 +1,7 @@
 {
   "name": "nopin",
   "productName": "Nopin",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A lightweight always-on-top macOS task window for Notion databases.",
   "main": "./out/main/index.js",
   "author": "crazzzzhao",

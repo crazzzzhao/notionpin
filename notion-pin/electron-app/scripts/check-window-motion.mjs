@@ -154,7 +154,7 @@ async function measure(label, collapse) {
   }
   // Retain failing measurements too, so CI failures identify which stage was delayed.
   report.push(entry)
-  console.log(JSON.stringify({ ...entry, events: undefined }))
+  console.log(JSON.stringify({ ...entry, events: undefined, nativeEvents: undefined }))
   await writeFile(
     join(reportDirectory, 'motion-measurements.json'),
     `${JSON.stringify(report, null, 2)}\n`
@@ -312,13 +312,31 @@ try {
     'Collapse/expand reset the task list scroll position'
   )
 
+  await main.evaluate('globalThis.nopinMotionEvents = []')
   const rapid = await renderer.evaluate(`(async()=>{
+    const startedAt=Date.now();
     const main=document.querySelector('#window-content');
     const button=document.querySelector('button[aria-controls="window-content"]');
     button.click(); await new Promise(r=>setTimeout(r,40)); button.click();
     await new Promise(r=>setTimeout(r,1100));
-    return {state:(await window.windowAPI.getWindowState()).isCollapsed,retained:main===document.querySelector('#window-content'),expanded:button.getAttribute('aria-expanded'),height:innerHeight};
+    return {startedAt,state:(await window.windowAPI.getWindowState()).isCollapsed,retained:main===document.querySelector('#window-content'),expanded:button.getAttribute('aria-expanded'),height:innerHeight,visibility:document.visibilityState,focused:document.hasFocus()};
   })()`)
+  const rapidEvents = await main.evaluate('globalThis.nopinMotionEvents')
+  const rapidDiagnostic = {
+    ...rapid,
+    startedAt: undefined,
+    nativeEvents: rapidEvents.map(({ time, ...event }) => ({
+      ...event,
+      ms: time - rapid.startedAt
+    }))
+  }
+  console.log(
+    JSON.stringify({ rapidReversalResult: { ...rapidDiagnostic, nativeEvents: undefined } })
+  )
+  await writeFile(
+    join(reportDirectory, 'rapid-reversal.json'),
+    `${JSON.stringify(rapidDiagnostic, null, 2)}\n`
+  )
   assert(
     !rapid.state && rapid.retained && rapid.expanded === 'true' && rapid.height === 640,
     'Rapid reversal lost the latest intent'

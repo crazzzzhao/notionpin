@@ -43,6 +43,26 @@ describe('layout measurement readiness', () => {
     await expect(waitForStableBounds(async () => [null])).rejects.toThrow('bounds are unavailable')
   })
 
+  it('does not start the quiet period before a control has painted', async () => {
+    const start = Date.now()
+    const result = waitForStableBounds(
+      async () => [17, 8, Date.now() - start < 500 ? 0 : 120, 40],
+      { isReady: (bounds) => bounds[2] > 0 }
+    )
+    await vi.advanceTimersByTimeAsync(650)
+    await expect(result).resolves.toEqual({ elapsedMs: 650, bounds: [17, 8, 120, 40] })
+  })
+
+  it('fails within the same deadline when a control never paints', async () => {
+    const result = waitForStableBounds(async () => [17, 8, 0, 40], {
+      timeoutMs: 500,
+      isReady: (bounds) => bounds[2] > 0
+    })
+    const assertion = expect(result).rejects.toThrow('did not settle within 500ms')
+    await vi.advanceTimersByTimeAsync(500)
+    await assertion
+  })
+
   it('preserves renderer errors instead of skipping the check', async () => {
     await expect(
       waitForStableBounds(async () => {
